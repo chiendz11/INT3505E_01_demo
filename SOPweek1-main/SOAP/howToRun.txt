@@ -1,0 +1,7 @@
+first, cd into this directory
+cd "C:\Users\Lenovo\Work\ServiceOrientedProgramming\Week1\SOAP\week1"
+then, run this 
+mvn compile exec:java -Dexec.mainClass=com.soap.HelloServiceImpl
+then, open a new terminal and cd in the same directory
+then, run this 
+mvn compile exec:java -Dexec.mainClass=com.soap.HelloClient
