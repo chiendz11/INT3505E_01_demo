@@ -102,7 +102,8 @@ def calculate_student_performance(student_id: int) -> Optional[Dict[str, Any]]:
 @router.get(
     "/performance_summary", 
     response_model=List[Dict[str, Any]],
-    summary="Lấy tổng hợp hiệu suất của tất cả sinh viên"
+    summary="Lấy tổng hợp hiệu suất của tất cả sinh viên",
+    status_code=200
 )
 def get_all_students_performance():
     """
