@@ -85,12 +85,12 @@ def return_book(record_id):
     if not data or 'userId' not in data or 'quantity' not in data:
         return {"error": "Invalid input"}, 400
     user_id = data['userId']
-    quantity = data['quantity']
+    quantity = int(data['quantity'])
     if quantity <= 0:
         return {"error": "Quantity must be greater than 0"}, 400
     elif quantity > borrowing_records[record_id]['quantity']:
         return {"error": "Return quantity larger than borrowed quantity"}, 400
-    books["available_copies"] += quantity
+    books[borrowing_records[record_id]['bookId']]['available_copies'] += quantity
     returning_records[len(returning_records) + 1] = {
         "id": len(returning_records) + 1,
         "userId": user_id, 
@@ -98,6 +98,7 @@ def return_book(record_id):
         "quantity": quantity,
         "returnDate": "2023-10-10"  # Example date
     }
+    print(f"book's name: {books[borrowing_records[record_id]['bookId']]['title']}, available_copies: {books[borrowing_records[record_id]['bookId']]['available_copies']}")
     return {"message": "Book returned successfully"}, 200
 if __name__ == '__main__':
     app.run(debug=True, port=5000)

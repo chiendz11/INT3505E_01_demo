@@ -2,7 +2,7 @@ import strawberry
 from fastapi import FastAPI
 from strawberry.fastapi import GraphQLRouter
 from typing import List, Optional
-
+import uvicorn
 # ----------------------------------------------------------------------
 # 1. DATABASE ẢO - SỬ DỤNG MÔ HÌNH 3 BẢNG CHUẨN HÓA
 # ----------------------------------------------------------------------
@@ -137,5 +137,8 @@ schema = strawberry.Schema(query=Query)
 app = FastAPI()
 graphql_app = GraphQLRouter(schema)
 app.include_router(graphql_app, prefix="/graphql")
+if __name__ == "__main__":
+    
+    uvicorn.run(app, host="0.0.0.0", port=5000)
 
 # Run: uvicorn [ten_file]:app --reload --port 5000

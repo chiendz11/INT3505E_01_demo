@@ -1,6 +1,6 @@
 from fastapi import APIRouter, FastAPI
 from typing import List, Dict, Any, Optional
-
+import uvicorn
 app = FastAPI(
     title="Student Performance API (Layered Demo)",
     description="Ứng dụng quản lý hiệu suất sinh viên.",
@@ -13,7 +13,7 @@ router = APIRouter(
     tags=["Students Performance"],
 )
 
-app.include_router(router)
+
 # ----------------------------------------------------------------------
 # 1. DATABASE ẢO - DATA ACCESS LAYER (DAL)
 # ----------------------------------------------------------------------
@@ -40,13 +40,13 @@ CONDUCT_SCORES_DB = {
     3: {"rl_score": 50},
 }
 
-# Hàm truy cập dữ liệu (DAL/Repository)
+# Hàm truy cập dữ liệu 
 def get_student_scores(student_id: int) -> List[float]:
-    """DAL: Lấy danh sách điểm môn học từ bảng SUBJECT_SCORES_DB."""
+    """Lấy danh sách điểm môn học từ bảng SUBJECT_SCORES_DB."""
     return [item["score"] for item in SUBJECT_SCORES_DB if item["student_id"] == student_id]
 
 def get_rl_score(student_id: int) -> int:
-    """DAL: Lấy điểm rèn luyện từ bảng CONDUCT_SCORES_DB."""
+    """Lấy điểm rèn luyện từ bảng CONDUCT_SCORES_DB."""
     return CONDUCT_SCORES_DB.get(student_id, {}).get("rl_score", 0)
 
 # ----------------------------------------------------------------------
@@ -119,4 +119,7 @@ def get_all_students_performance():
             performance_list.append(data)
             
     return performance_list
-# uvicorn RESTful.Server:router --reload --port 8000
+
+app.include_router(router)
+if __name__ == "__main__":
+    uvicorn.run(app, host="0.0.0.0", port=8000)
