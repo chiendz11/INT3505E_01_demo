@@ -24,11 +24,13 @@ def send_request(method: str, endpoint: str, data: None):
         return None
     
 def list_books():
-    res = send_request('GET', 'book_list', None)
+    res = send_request('GET', 'books', None)
     print("Available Books:")
     for book in res:
         print(f"ID: {book['id']}, Title: {book['title']}, Author: {book['author']}, Available Copies: {book['available_copies']}")
     return res
+
+
 
 def add_book():
     title = input("Enter book title or 'q' to quit: ")
@@ -47,7 +49,7 @@ def add_book():
             "author": author,
             "available_copies": available_copies
         }
-        send_request('POST', 'add_book', book_data)
+        send_request('POST', 'books', book_data)
     except ValueError:
         print("Invalid number for available copies.")
         return
@@ -59,7 +61,7 @@ def delete_book():
             break
         try:
             book_id = int(book_id)
-            res = send_request('DELETE', f'delete_book/{book_id}', None)
+            res = send_request('DELETE', f'books/{book_id}', None)
             if res.status_code == 204:
                 print("Book deleted successfully.")
                 break
@@ -92,7 +94,7 @@ def update_book():
                 "author": author,
                 "available_copies": available_copies
             }
-            res = send_request('PUT', f'update_book/{book_id}', book_data)
+            res = send_request('PUT', f'books/{book_id}', book_data)
             if res and res.status_code == 200:
                 print("Book updated successfully.")
                 break
@@ -103,12 +105,34 @@ def update_book():
             print("Invalid input. Please enter valid data.")
             continue 
 
+def get_book():
+    while True:
+        book_id = input("Enter book ID to view or 'q' to quit: ")
+        if book_id.lower() == 'q':
+            break
+        try:
+            book_id = int(book_id)
+            res = send_request('GET', f'books/{book_id}', None)
+            if not res:
+                print("Book not found.")
+                continue
+            print(f"\nBook Details:")
+            print(f"ID: {res['id']}, Title: {res['title']}, Author: {res['author']}, Copies: {res['available_copies']}")
+            print("HATEOAS Links:")
+            for link in res['links']:
+                print(f"  - rel: {link['rel']}, href: {link['href']}, method: {link['method']}")
+            break
+        except ValueError:
+            print("Invalid book ID.")
+            continue
+
 def display_menu():
     print("\nLibrary Management System")
     print("1. List all books")
     print("2. Add a new book")
     print("3. Delete a book")
     print("4. Update a book")
+    print("5. Get book details")
     print("0. Exit")
 
 def main():
@@ -126,6 +150,8 @@ def main():
         elif choice == '0':
             print("Exiting the program.")
             break
+        elif choice == '5':
+            get_book()
         else:
             print("Invalid choice. Please try again.")
         print("\nPress Enter to continue...")

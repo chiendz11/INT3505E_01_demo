@@ -15,12 +15,30 @@ users = {1: {"id": 1, "username": "Alice"},
 }
 borrowing_records = {1: {"id": 1, "userId": 3, "bookId": 2, "quantity": 1, "borrowDate": "2023-10-01", }}
 returning_records = {1: {"id": 1, "userId": 3, "bookId": 2, "quantity": 1, "returnDate": "2023-10-05"}}
+BASE_URL = "http://localhost:5000"
+def add_hateoas_book(book):
+    """Thêm link HATEOAS cho resource Book"""
+    book['links'] = [
+        {"rel": "self", "href": f"{BASE_URL}/books/{book['id']}", "method": "GET"},
+        {"rel": "update", "href": f"{BASE_URL}/books/{book['id']}", "method": "PUT"},
+        {"rel": "delete", "href": f"{BASE_URL}/books/{book['id']}", "method": "DELETE"},
+        {"rel": "borrow", "href": f"{BASE_URL}/borrow_books/{book['id']}", "method": "POST"}
+    ]
+    return book
 
-@app.route('/book_list', methods=['GET'])
+@app.route('/books', methods=['GET'])
 def list_books():
     return json.dumps(list(books.values())), 200
 
-@app.route('/add_book', methods=['POST'])
+@app.route('/books/<int:book_id>', methods=['GET'])
+def get_book(book_id):
+    if book_id not in books:
+        return {"error": "Book not found"}, 404
+    book = books[book_id]
+    # Thêm HATEOAS link
+    return add_hateoas_book(book.copy()), 200
+
+@app.route('/books', methods=['POST'])
 def add_book():
     data = flask.request.json
     if not data or 'title' not in data or 'author' not in data or 'available_copies' not in data:
@@ -34,14 +52,14 @@ def add_book():
     }
     return {"message": "Book added", "book_id": book_id}, 201
 
-@app.route('/delete_book/<int:book_id>', methods=['DELETE'])
+@app.route('/books/<int:book_id>', methods=['DELETE'])
 def delete_book(book_id):
     if book_id not in books:
         return {"error": "Book not found"}, 404
     del books[book_id]
     return '', 204
 
-@app.route('/update_book/<int:book_id>', methods=['PUT'])
+@app.route('/books/<int:book_id>', methods=['PUT'])
 def update_book(book_id):
     if book_id not in books:
         return {"error": "Book not found"}, 404
@@ -79,6 +97,7 @@ def borrow_book(book_id):
         }
         print(f"book's name: {books[book_id]['title']}, available_copies: {books[book_id]['available_copies']}")
         return {"message": "Book borrowed successfully"}, 200
+    
 @app.route('/return_book/<int:record_id>', methods=['POST'])
 def return_book(record_id):
     data = flask.request.json
