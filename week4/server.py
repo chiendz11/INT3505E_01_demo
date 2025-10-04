@@ -1,5 +1,6 @@
 import flask
 import json
+import makeresponse
 
 app = flask.Flask(__name__)
 
@@ -28,8 +29,12 @@ def add_hateoas_book(book):
 
 @app.route('/books', methods=['GET'])
 def list_books():
-    return json.dumps(list(books.values())), 200
-
+    response = make_response(json.dumps(list(books.values())), 200)
+    # Cho phép cache trong 60 giây
+    response.headers['Cache-Control'] = 'public, max-age=60'
+    response.headers['Content-Type'] = 'application/json'
+    return response
+    
 @app.route('/books/<int:book_id>', methods=['GET'])
 def get_book(book_id):
     if book_id not in books:
