@@ -1,144 +1,163 @@
 import requests
 import json
 
-BASE_URL = 'http://localhost:5000'
+BASE_URL = "http://localhost:5000"
 
-def send_request(method: str, endpoint: str, data: None):
+# ==============================
+# ⚙️ Helper
+# ==============================
+def send_request(method: str, endpoint: str, data=None):
     try:
         url = f"{BASE_URL}/{endpoint}"
-        print(f"Sending {method} request to {url} with data: {data}")
-        if method == 'GET':
-            response = requests.get(url) 
-        elif method == 'POST':
-            response = requests.post(url, json=data)
-        elif method == 'DELETE':
-            response = requests.delete(url)
-        elif method == 'PUT':
-            response = requests.put(url, json=data)
-        else: 
-            raise ValueError("Unsupported HTTP method")
-        print(f"Response Status Code: {response.status_code}/{response.reason}")
-        return response.json()
-        
-    except requests.RequestException as e:
-        return None
-    
-def list_books():
-    res = send_request('GET', 'books', None)
-    print("Available Books:")
-    for book in res:
-        print(f"ID: {book['id']}, Title: {book['title']}, Author: {book['author']}, Available Copies: {book['available_copies']}")
-    return res
+        print(f"\n➡️ {method} {url}")
+        if data:
+            print(f"📦 Payload: {data}")
 
+        if method == "GET":
+            res = requests.get(url, params=data)
+        elif method == "POST":
+            res = requests.post(url, json=data)
+        elif method == "PUT":
+            res = requests.put(url, json=data)
+        elif method == "DELETE":
+            res = requests.delete(url)
+        else:
+            raise ValueError("Unsupported HTTP method")
+
+        print(f"⬅️ Status: {res.status_code} {res.reason}")
+        return res
+    except requests.RequestException as e:
+        print(f"❌ Request failed: {e}")
+        return None
+
+
+# ==============================
+# 📚 Book operations
+# ==============================
+def list_books():
+    author = input("Enter author name to filter (leave blank for all): ")
+    params = {"author": author} if author else None
+    res = send_request("GET", "books", params)
+    if not res or res.status_code != 200:
+        print("❌ Failed to fetch books.")
+        return []
+
+    data = res.json()
+    print("\n📚 Available Books:")
+    for book in data:
+        print(f"  ID: {book['id']} | {book['title']} by {book['author']} | Copies: {book['available_copies']}")
+    return data
 
 
 def add_book():
-    title = input("Enter book title or 'q' to quit: ")
-    if title.lower() == 'q':
-        return
+    title = input("Enter book title: ")
+    if title.lower() == 'q': return
     author = input("Enter book author: ")
-    if author.lower() == 'q':
-        return
-    available_copies = input("Enter number of available copies: ")
-    if available_copies.lower() == 'q':
-        return
+    if author.lower() == 'q': return
     try:
-        available_copies = int(available_copies)
-        book_data = {
-            "title": title,
-            "author": author,
-            "available_copies": available_copies
-        }
-        send_request('POST', 'books', book_data)
+        copies = int(input("Enter available copies: "))
+        data = {"title": title, "author": author, "available_copies": copies}
+        res = send_request("POST", "books", data)
+        if res and res.status_code == 201:
+            print("✅ Book created successfully.")
     except ValueError:
-        print("Invalid number for available copies.")
-        return
+        print("❌ Invalid number.")
+
 
 def delete_book():
-    while True:
-        book_id = input("Enter book ID to delete or q to quit: ")
-        if book_id.lower() == 'q':
-            break
-        try:
-            book_id = int(book_id)
-            res = send_request('DELETE', f'books/{book_id}', None)
-            if res.status_code == 204:
-                print("Book deleted successfully.")
-                break
-            elif res.status_code == 404:
-                print(f"{res.message}")
-                continue
-        except ValueError:
-            print("Invalid book ID. Please enter a number.")
-            continue
+    try:
+        book_id = int(input("Enter book ID to delete: "))
+        res = send_request("DELETE", f"books/{book_id}")
+        if res.status_code == 204:
+            print("✅ Book deleted successfully.")
+        elif res.status_code == 404:
+            print("❌ Book not found.")
+    except ValueError:
+        print("❌ Invalid input.")
+
 
 def update_book():
-    while True:
-        book_id = input("Enter book ID to update or q to quit: ")
-        if book_id.lower() == 'q':
-            break
-        try:
-            book_id = int(book_id)
-            title = input("Enter new title: ")
-            if title.lower() == 'q':
-                return
-            author = input("Enter new author: ")
-            if author.lower() == 'q':
-                return
-            available_copies = input("Enter new number of available copies: ")
-            if available_copies.lower() == 'q':
-                return
-            available_copies = int(available_copies)
-            book_data = {
-                "title": title,
-                "author": author,
-                "available_copies": available_copies
-            }
-            res = send_request('PUT', f'books/{book_id}', book_data)
-            if res and res.status_code == 200:
-                print("Book updated successfully.")
-                break
-            elif res and res.status_code == 404:
-                print("Book not found.")
-                continue
-        except ValueError:
-            print("Invalid input. Please enter valid data.")
-            continue 
+    try:
+        book_id = int(input("Enter book ID to update: "))
+        title = input("Enter new title: ")
+        author = input("Enter new author: ")
+        copies = int(input("Enter new available copies: "))
+        data = {"title": title, "author": author, "available_copies": copies}
+        res = send_request("PUT", f"books/{book_id}", data)
+        if res.status_code == 200:
+            print("✅ Book updated successfully.")
+        elif res.status_code == 404:
+            print("❌ Book not found.")
+    except ValueError:
+        print("❌ Invalid input.")
+
 
 def get_book():
-    while True:
-        book_id = input("Enter book ID to view or 'q' to quit: ")
-        if book_id.lower() == 'q':
-            break
-        try:
-            book_id = int(book_id)
-            res = send_request('GET', f'books/{book_id}', None)
-            if not res:
-                print("Book not found.")
-                continue
-            print(f"\nBook Details:")
-            print(f"ID: {res['id']}, Title: {res['title']}, Author: {res['author']}, Copies: {res['available_copies']}")
-            print("HATEOAS Links:")
-            for link in res['links']:
-                print(f"  - rel: {link['rel']}, href: {link['href']}, method: {link['method']}")
-            break
-        except ValueError:
-            print("Invalid book ID.")
-            continue
+    try:
+        book_id = int(input("Enter book ID to view: "))
+        res = send_request("GET", f"books/{book_id}")
+        if res.status_code == 404:
+            print("❌ Book not found.")
+            return
+        data = res.json()
+        print(f"\n📖 Book Details:")
+        print(f"  ID: {data['id']}\n  Title: {data['title']}\n  Author: {data['author']}\n  Copies: {data['available_copies']}")
+        print("  🔗 HATEOAS Links:")
+        for link in data["links"]:
+            print(f"   - {link['rel']} [{link['method']}] -> {link['href']}")
+    except ValueError:
+        print("❌ Invalid input.")
 
+
+
+# ==============================
+# 👤 User
+# ==============================
+def list_user_borrowings():
+    try:
+        user_id = int(input("Enter User ID to view borrowings: "))
+
+        # 🔹 đổi endpoint sang /users/{id}/books?relation=borrowed
+        endpoint = f"users/{user_id}/books"
+        params = {"relation": "borrowed"}
+
+        res = send_request("GET", endpoint, params)
+        if not res:
+            print("❌ Request failed.")
+            return
+        if res.status_code == 404:
+            print("❌ User not found.")
+            return
+
+        data = res.json()
+        if not data:
+            print("ℹ️ User has no borrowed books.")
+            return
+        print(f"\n📚 Borrowed Books for User {user_id}:")
+        for book in data:
+            print(f"  - {book['title']} ({book['author']}) | Qty: {book['borrow_quantity']} | Date: {book['borrow_date']}")
+    except ValueError:
+        print("❌ Invalid input.")
+
+
+# ==============================
+# 🧭 Menu
+# ==============================
 def display_menu():
-    print("\nLibrary Management System")
+    print("\n====== Library Management System ======")
     print("1. List all books")
     print("2. Add a new book")
     print("3. Delete a book")
     print("4. Update a book")
     print("5. Get book details")
+    print("6. View user's borrowed books")
     print("0. Exit")
+
 
 def main():
     while True:
         display_menu()
-        choice = input("Enter your choice: ")
+        choice = input("Select an option: ").strip()
         if choice == '1':
             list_books()
         elif choice == '2':
@@ -147,13 +166,17 @@ def main():
             delete_book()
         elif choice == '4':
             update_book()
-        elif choice == '0':
-            print("Exiting the program.")
-            break
         elif choice == '5':
             get_book()
+        elif choice == '6':
+            list_user_borrowings()
+        elif choice == '0':
+            print("👋 Exiting system.")
+            break
         else:
-            print("Invalid choice. Please try again.")
-        print("\nPress Enter to continue...")
+            print("❌ Invalid option. Try again.")
+        input("\nPress Enter to continue...")
+
+
 if __name__ == "__main__":
     main()

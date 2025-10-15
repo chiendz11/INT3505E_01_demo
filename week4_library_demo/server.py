@@ -1,53 +1,76 @@
-import flask
+from flask import Flask, make_response, request
 import json
-import makeresponse
 
-app = flask.Flask(__name__)
+app = Flask(__name__)
 
 print("Starting server...")
+
+# ==============================
+# 🧠 Mock Database
+# ==============================
 books = {
     1: {"id": 1, "title": "1984", "author": "George Orwell", "available_copies": 6},
     2: {"id": 2, "title": "To Kill a Mockingbird", "author": "Harper Lee", "available_copies": 4},
     3: {"id": 3, "title": "The Great Gatsby", "author": "F. Scott Fitzgerald", "available_copies": 5},
 }
-users = {1: {"id": 1, "username": "Alice"},
-         2: {"id": 2, "username": "Bob"},
-         3: {"id": 3, "username": "chienqt"}
+
+users = {
+    1: {"id": 1, "username": "Alice"},
+    2: {"id": 2, "username": "Bob"},
+    3: {"id": 3, "username": "Chienqt"}
 }
-borrowing_records = {1: {"id": 1, "userId": 3, "bookId": 2, "quantity": 1, "borrowDate": "2023-10-01", }}
-returning_records = {1: {"id": 1, "userId": 3, "bookId": 2, "quantity": 1, "returnDate": "2023-10-05"}}
+
+transactions = {
+    1: {"id": 1, "userId": 3, "bookId": 2, "quantity": 1, "type": "borrow", "date": "2023-10-01"},
+    2: {"id": 2, "userId": 3, "bookId": 2, "quantity": 1, "type": "return", "date": "2023-10-05"}
+}
+
 BASE_URL = "http://localhost:5000"
+
+# ==============================
+# ⚙️ HATEOAS Helper
+# ==============================
 def add_hateoas_book(book):
     """Thêm link HATEOAS cho resource Book"""
     book['links'] = [
         {"rel": "self", "href": f"{BASE_URL}/books/{book['id']}", "method": "GET"},
         {"rel": "update", "href": f"{BASE_URL}/books/{book['id']}", "method": "PUT"},
         {"rel": "delete", "href": f"{BASE_URL}/books/{book['id']}", "method": "DELETE"},
-        {"rel": "borrow", "href": f"{BASE_URL}/borrow_books/{book['id']}", "method": "POST"}
+        {"rel": "borrow", "href": f"{BASE_URL}/transactions", "method": "POST"}
     ]
     return book
 
+# ==============================
+# 📚 Book API
+# ==============================
 @app.route('/books', methods=['GET'])
 def list_books():
-    response = make_response(json.dumps(list(books.values())), 200)
-    # Cho phép cache trong 60 giây
+    """Lấy danh sách tất cả sách, có thể lọc theo tác giả"""
+    author_filter = request.args.get('author')
+    result = list(books.values())
+
+    if author_filter:
+        result = [b for b in result if b['author'].lower() == author_filter.lower()]
+
+    response = make_response(json.dumps(result), 200)
     response.headers['Cache-Control'] = 'public, max-age=60'
     response.headers['Content-Type'] = 'application/json'
     return response
-    
+
+
 @app.route('/books/<int:book_id>', methods=['GET'])
 def get_book(book_id):
     if book_id not in books:
         return {"error": "Book not found"}, 404
-    book = books[book_id]
-    # Thêm HATEOAS link
-    return add_hateoas_book(book.copy()), 200
+    return add_hateoas_book(books[book_id].copy()), 200
+
 
 @app.route('/books', methods=['POST'])
-def add_book():
-    data = flask.request.json
-    if not data or 'title' not in data or 'author' not in data or 'available_copies' not in data:
+def create_book():
+    data = request.json
+    if not data or not all(k in data for k in ('title', 'author', 'available_copies')):
         return {"error": "Invalid input"}, 400
+
     book_id = len(books) + 1
     books[book_id] = {
         "id": book_id,
@@ -55,7 +78,20 @@ def add_book():
         "author": data['author'],
         "available_copies": data['available_copies']
     }
-    return {"message": "Book added", "book_id": book_id}, 201
+    return {"message": "Book created", "book_id": book_id}, 201
+
+
+@app.route('/books/<int:book_id>', methods=['PUT'])
+def update_book(book_id):
+    if book_id not in books:
+        return {"error": "Book not found"}, 404
+    data = request.json
+    if not data or not all(k in data for k in ('title', 'author', 'available_copies')):
+        return {"error": "Invalid input"}, 400
+
+    books[book_id].update(data)
+    return {"message": "Book updated successfully"}, 200
+
 
 @app.route('/books/<int:book_id>', methods=['DELETE'])
 def delete_book(book_id):
@@ -64,65 +100,85 @@ def delete_book(book_id):
     del books[book_id]
     return '', 204
 
-@app.route('/books/<int:book_id>', methods=['PUT'])
-def update_book(book_id):
-    if book_id not in books:
-        return {"error": "Book not found"}, 404
-    data = flask.request.json
-    if not data or 'title' not in data or 'author' not in data or 'available_copies' not in data:
-        return {"error": "Invalid input"}, 400
-    books[book_id] = {
-        "id": book_id,
-        "title": data['title'],
-        "author": data['author'],
-        "available_copies": data['available_copies']
-    }
-    return {"message": "Book updated"}, 200
 
-@app.route('/borrow_book/<int:book_id>', methods=['POST'])
-def borrow_book(book_id):
-    if book_id not in books:
-        return {"error": "Book not found"}, 404
-    data = flask.request.json
-    if not data or 'userId' not in data or 'quantity' not in data:
-        return {"error": "Invalid input"}, 404
-    user_id = data['userId']
-    quantity = data['quantity']
-    if books[book_id]['available_copies'] <= quantity:
-        return {"error": "No available copies to borrow"}, 400
-    else:
-        books[book_id]['available_copies'] -= quantity
-        record_id = len(borrowing_records) + 1
-        borrowing_records[record_id] = {
-            "id": record_id,    
-            "userId": user_id,
-            "bookId": book_id,
-            "quantity": quantity,
-            "borrowDate": "2023-10-10",  # Example date
-        }
-        print(f"book's name: {books[book_id]['title']}, available_copies: {books[book_id]['available_copies']}")
-        return {"message": "Book borrowed successfully"}, 200
-    
-@app.route('/return_book/<int:record_id>', methods=['POST'])
-def return_book(record_id):
-    data = flask.request.json
-    if not data or 'userId' not in data or 'quantity' not in data:
+# ==============================
+# 🔁 Transaction API
+# ==============================
+@app.route('/transactions', methods=['POST'])
+def create_transaction():
+    """Tạo một giao dịch mượn hoặc trả sách"""
+    data = request.json
+    if not data or not all(k in data for k in ('userId', 'bookId', 'quantity', 'type')):
         return {"error": "Invalid input"}, 400
+
     user_id = data['userId']
-    quantity = int(data['quantity'])
-    if quantity <= 0:
-        return {"error": "Quantity must be greater than 0"}, 400
-    elif quantity > borrowing_records[record_id]['quantity']:
-        return {"error": "Return quantity larger than borrowed quantity"}, 400
-    books[borrowing_records[record_id]['bookId']]['available_copies'] += quantity
-    returning_records[len(returning_records) + 1] = {
-        "id": len(returning_records) + 1,
-        "userId": user_id, 
-        "bookId": borrowing_records[record_id]['bookId'], 
+    book_id = data['bookId']
+    quantity = data['quantity']
+    tran_type = data['type']
+
+    if user_id not in users or book_id not in books:
+        return {"error": "User or book not found"}, 404
+    if tran_type not in ['borrow', 'return']:
+        return {"error": "Invalid transaction type"}, 400
+
+    if tran_type == 'borrow':
+        if books[book_id]['available_copies'] < quantity:
+            return {"error": "Not enough copies available"}, 400
+        books[book_id]['available_copies'] -= quantity
+    elif tran_type == 'return':
+        books[book_id]['available_copies'] += quantity
+
+    tran_id = len(transactions) + 1
+    transactions[tran_id] = {
+        "id": tran_id,
+        "userId": user_id,
+        "bookId": book_id,
         "quantity": quantity,
-        "returnDate": "2023-10-10"  # Example date
+        "type": tran_type,
+        "date": "2023-10-10"
     }
-    print(f"book's name: {books[borrowing_records[record_id]['bookId']]['title']}, available_copies: {books[borrowing_records[record_id]['bookId']]['available_copies']}")
-    return {"message": "Book returned successfully"}, 200
+
+    return {"message": "Transaction recorded successfully", "transaction_id": tran_id}, 201
+
+
+# ==============================
+# 👤 User API
+# ==============================
+@app.route('/users/<int:user_id>/books', methods=['GET'])
+def list_user_books(user_id):
+    """Lấy danh sách các sách mà người dùng đã mượn hoặc trả"""
+    if user_id not in users:
+        return {"error": "User not found"}, 404
+
+    relation = request.args.get('relation', 'borrowed')
+    if relation not in ['borrowed', 'returned']:
+        return {"error": "Invalid relation type"}, 400
+
+    tran_type = 'borrow' if relation == 'borrowed' else 'return'
+
+    filtered_transactions = [
+        t for t in transactions.values()
+        if t['userId'] == user_id and t['type'] == tran_type
+    ]
+
+    result = []
+    for t in filtered_transactions:
+        if t['bookId'] in books:
+            book_info = books[t['bookId']].copy()
+            book_info.update({
+                "transaction_type": t['type'],
+                "quantity": t['quantity'],
+                "date": t['date']
+            })
+            result.append(book_info)
+
+    response = make_response(json.dumps(result), 200)
+    response.headers['Content-Type'] = 'application/json'
+    return response
+
+
+# ==============================
+# 🚀 Run
+# ==============================
 if __name__ == '__main__':
     app.run(debug=True, port=5000)

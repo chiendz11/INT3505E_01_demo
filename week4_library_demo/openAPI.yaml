@@ -1,0 +1,257 @@
+openapi: 3.0.3
+info:
+  title: Library Management API
+  description: API mô phỏng hệ thống quản lý thư viện với tài nguyên **Books**, **Transactions** và **Users**.
+  version: 1.0.0
+servers:
+  # Added by API Auto Mocking Plugin
+  - description: SwaggerHub API Auto Mocking
+    url: https://virtserver.swaggerhub.com/uet-774/lib_api/1.0.0
+  - url: http://localhost:5000
+    description: Local development server
+
+paths:
+  /books:
+    get:
+      summary: Get list of all books
+      description: Lấy danh sách tất cả sách, có thể lọc theo tác giả.
+      parameters:
+        - name: author
+          in: query
+          description: Tên tác giả để lọc sách
+          required: false
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Successful operation
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Book'
+    post:
+      summary: Create a new book
+      description: Tạo mới một quyển sách trong hệ thống.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BookInput'
+      responses:
+        '201':
+          description: Book created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  book_id:
+                    type: integer
+        '400':
+          description: Invalid input
+
+  /books/{bookId}:
+    get:
+      summary: Get book details
+      description: Lấy thông tin chi tiết về một quyển sách.
+      parameters:
+        - name: bookId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Book detail with HATEOAS links
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookWithLinks'
+        '404':
+          description: Book not found
+    put:
+      summary: Update a book
+      description: Cập nhật thông tin của một quyển sách.
+      parameters:
+        - name: bookId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BookInput'
+      responses:
+        '200':
+          description: Book updated successfully
+        '400':
+          description: Invalid input
+        '404':
+          description: Book not found
+    delete:
+      summary: Delete a book
+      description: Xóa một quyển sách khỏi hệ thống.
+      parameters:
+        - name: bookId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '204':
+          description: Book deleted successfully
+        '404':
+          description: Book not found
+
+  /transactions:
+    post:
+      summary: Create a new transaction
+      description: Tạo giao dịch mượn hoặc trả sách.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TransactionInput'
+      responses:
+        '201':
+          description: Transaction created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  transaction_id:
+                    type: integer
+        '400':
+          description: Invalid input or insufficient copies
+        '404':
+          description: User or book not found
+
+  /users/{userId}/books:
+    get:
+      summary: Get user's related books
+      description: Lấy danh sách sách mà người dùng đã **mượn** hoặc **trả**.  
+        Dùng query param `relation` để chọn loại giao dịch.
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: ID người dùng
+        - name: relation
+          in: query
+          required: false
+          description: |
+            Kiểu quan hệ giữa user và sách:
+            - `borrowed`: sách đã mượn
+            - `returned`: sách đã trả
+          schema:
+            type: string
+            enum: [borrowed, returned]
+            default: borrowed
+      responses:
+        '200':
+          description: List of user's borrowed or returned books
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/UserBookRelation'
+        '400':
+          description: Invalid relation type
+        '404':
+          description: User not found
+
+components:
+  schemas:
+    Book:
+      type: object
+      properties:
+        id:
+          type: integer
+        title:
+          type: string
+        author:
+          type: string
+        available_copies:
+          type: integer
+      example:
+        id: 1
+        title: "1984"
+        author: "George Orwell"
+        available_copies: 6
+
+    BookInput:
+      type: object
+      required: [title, author, available_copies]
+      properties:
+        title:
+          type: string
+        author:
+          type: string
+        available_copies:
+          type: integer
+
+    BookWithLinks:
+      allOf:
+        - $ref: '#/components/schemas/Book'
+        - type: object
+          properties:
+            links:
+              type: array
+              items:
+                type: object
+                properties:
+                  rel:
+                    type: string
+                  href:
+                    type: string
+                  method:
+                    type: string
+
+    TransactionInput:
+      type: object
+      required: [userId, bookId, quantity, type]
+      properties:
+        userId:
+          type: integer
+        bookId:
+          type: integer
+        quantity:
+          type: integer
+        type:
+          type: string
+          enum: [borrow, return]
+
+    UserBookRelation:
+      type: object
+      properties:
+        id:
+          type: integer
+        title:
+          type: string
+        author:
+          type: string
+        available_copies:
+          type: integer
+        transaction_type:
+          type: string
+          enum: [borrow, return]
+        quantity:
+          type: integer
+        date:
+          type: string
+          format: date
