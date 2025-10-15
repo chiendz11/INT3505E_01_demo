@@ -3,26 +3,34 @@ import json
 
 BASE_URL = "http://localhost:5000"
 
+etag_cache = {}
+
 # ==============================
 # ⚙️ Helper
 # ==============================
 def send_request(method: str, endpoint: str, data=None):
     try:
         url = f"{BASE_URL}/{endpoint}"
+        headers = {}
+
+        # Nếu có ETag trước đó, gửi lại để kiểm tra thay đổi
+        if method == "GET" and url in etag_cache:
+            headers['If-None-Match'] = etag_cache[url]
+
         print(f"\n➡️ {method} {url}")
         if data:
             print(f"📦 Payload: {data}")
 
-        if method == "GET":
-            res = requests.get(url, params=data)
-        elif method == "POST":
-            res = requests.post(url, json=data)
-        elif method == "PUT":
-            res = requests.put(url, json=data)
-        elif method == "DELETE":
-            res = requests.delete(url)
-        else:
-            raise ValueError("Unsupported HTTP method")
+        res = requests.request(method, url, json=data, params=data if method == "GET" else None, headers=headers)
+
+        # Nếu server trả 304 => dữ liệu cache cũ vẫn dùng được
+        if res.status_code == 304:
+            print("✅ Not Modified (using cached data).")
+            return None
+
+        # Nếu có ETag mới → lưu lại
+        if 'ETag' in res.headers:
+            etag_cache[url] = res.headers['ETag']
 
         print(f"⬅️ Status: {res.status_code} {res.reason}")
         return res
@@ -32,7 +40,7 @@ def send_request(method: str, endpoint: str, data=None):
 
 
 # ==============================
-# 📚 Book operations
+# Book operations
 # ==============================
 def list_books():
     author = input("Enter author name to filter (leave blank for all): ")
@@ -111,7 +119,7 @@ def get_book():
 
 
 # ==============================
-# 👤 User
+# User
 # ==============================
 def list_user_borrowings():
     try:
@@ -141,7 +149,7 @@ def list_user_borrowings():
 
 
 # ==============================
-# 🧭 Menu
+# Menu
 # ==============================
 def display_menu():
     print("\n====== Library Management System ======")

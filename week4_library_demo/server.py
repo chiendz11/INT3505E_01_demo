@@ -1,12 +1,12 @@
 from flask import Flask, make_response, request
-import json
+import json, hashlib
 
 app = Flask(__name__)
 
 print("Starting server...")
 
 # ==============================
-# 🧠 Mock Database
+# Mock Database
 # ==============================
 books = {
     1: {"id": 1, "title": "1984", "author": "George Orwell", "available_copies": 6},
@@ -28,8 +28,13 @@ transactions = {
 BASE_URL = "http://localhost:5000"
 
 # ==============================
-# ⚙️ HATEOAS Helper
+# Helper: tạo ETag
 # ==============================
+def generate_etag(data):
+    """Tạo ETag dựa trên nội dung JSON"""
+    json_str = json.dumps(data, sort_keys=True)
+    return hashlib.md5(json_str.encode("utf-8")).hexdigest()
+
 def add_hateoas_book(book):
     """Thêm link HATEOAS cho resource Book"""
     book['links'] = [
@@ -41,7 +46,7 @@ def add_hateoas_book(book):
     return book
 
 # ==============================
-# 📚 Book API
+# Book API
 # ==============================
 @app.route('/books', methods=['GET'])
 def list_books():
@@ -52,9 +57,14 @@ def list_books():
     if author_filter:
         result = [b for b in result if b['author'].lower() == author_filter.lower()]
 
+    etag = generate_etag(result)
+    if request.headers.get('If-None-Match') == etag:
+        return '', 304  # Không thay đổi
+
     response = make_response(json.dumps(result), 200)
     response.headers['Cache-Control'] = 'public, max-age=60'
     response.headers['Content-Type'] = 'application/json'
+    response.headers['ETag'] = etag
     return response
 
 
@@ -62,7 +72,17 @@ def list_books():
 def get_book(book_id):
     if book_id not in books:
         return {"error": "Book not found"}, 404
-    return add_hateoas_book(books[book_id].copy()), 200
+
+    book = add_hateoas_book(books[book_id].copy())
+    etag = generate_etag(book)
+    if request.headers.get('If-None-Match') == etag:
+        return '', 304
+
+    response = make_response(json.dumps(book), 200)
+    response.headers['Content-Type'] = 'application/json'
+    response.headers['ETag'] = etag
+    response.headers['Cache-Control'] = 'public, max-age=120'
+    return response
 
 
 @app.route('/books', methods=['POST'])
@@ -102,7 +122,7 @@ def delete_book(book_id):
 
 
 # ==============================
-# 🔁 Transaction API
+# Transaction API
 # ==============================
 @app.route('/transactions', methods=['POST'])
 def create_transaction():
@@ -142,7 +162,7 @@ def create_transaction():
 
 
 # ==============================
-# 👤 User API
+# User API
 # ==============================
 @app.route('/users/<int:user_id>/books', methods=['GET'])
 def list_user_books(user_id):
@@ -172,13 +192,18 @@ def list_user_books(user_id):
             })
             result.append(book_info)
 
+    etag = generate_etag(result)
+    if request.headers.get('If-None-Match') == etag:
+        return '', 304
+
     response = make_response(json.dumps(result), 200)
     response.headers['Content-Type'] = 'application/json'
+    response.headers['ETag'] = etag
     return response
 
 
 # ==============================
-# 🚀 Run
+# Run
 # ==============================
 if __name__ == '__main__':
     app.run(debug=True, port=5000)
