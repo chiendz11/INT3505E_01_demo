@@ -1,120 +1,187 @@
 openapi: 3.0.3
 info:
   title: Library Management API
-  description: API mô phỏng hệ thống quản lý thư viện với tài nguyên **Books**, **Transactions** và **Users**.
   version: 1.0.0
+  description: >
+    RESTful API cho hệ thống quản lý thư viện (Books, Transactions, Users)  
+    Hỗ trợ ETag, Pagination (Offset & Cursor), HATEOAS và ngrok public URL.
+
 servers:
   # Added by API Auto Mocking Plugin
   - description: SwaggerHub API Auto Mocking
     url: https://virtserver.swaggerhub.com/uet-774/lib_api/1.0.0
   - url: http://localhost:5000
     description: Local development server
+  - url: https://1b3e8907a849.ngrok-free.app
+    description: Public ngrok tunnel
+    variables:
+      your-ngrok-id:
+        default: example
 
 paths:
   /books:
     get:
-      summary: Get list of all books
-      description: Lấy danh sách tất cả sách, có thể lọc theo tác giả.
+      summary: Danh sách sách (Offset Pagination)
+      description: Phân trang kiểu offset/page, có thể lọc theo tác giả.
       parameters:
+        - name: page
+          in: query
+          schema: { type: integer, default: 1, minimum: 1 }
+          description: Số trang (page number)
+        - name: limit
+          in: query
+          schema: { type: integer, default: 20, minimum: 1, maximum: 100 }
+          description: Số lượng sách trên mỗi trang
         - name: author
           in: query
-          description: Tên tác giả để lọc sách
-          required: false
-          schema:
-            type: string
+          schema: { type: string }
+          description: Lọc sách theo tên tác giả
+        - name: If-None-Match
+          in: header
+          schema: { type: string }
+          description: ETag để kiểm tra cache hợp lệ
       responses:
         '200':
-          description: Successful operation
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/Book'
-    post:
-      summary: Create a new book
-      description: Tạo mới một quyển sách trong hệ thống.
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/BookInput'
-      responses:
-        '201':
-          description: Book created successfully
+          description: Danh sách sách phân trang
           content:
             application/json:
               schema:
                 type: object
                 properties:
-                  message:
-                    type: string
-                  book_id:
-                    type: integer
+                  metadata:
+                    type: object
+                    properties:
+                      pagination_strategy: { type: string, example: "offset_limit" }
+                      total_records: { type: integer }
+                      page: { type: integer }
+                      limit: { type: integer }
+                      total_pages: { type: integer }
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Book'
+                  links:
+                    type: object
+        '304':
+          description: Dữ liệu chưa thay đổi (ETag hợp lệ)
         '400':
-          description: Invalid input
-
-  /books/{bookId}:
-    get:
-      summary: Get book details
-      description: Lấy thông tin chi tiết về một quyển sách.
-      parameters:
-        - name: bookId
-          in: path
-          required: true
-          schema:
-            type: integer
-      responses:
-        '200':
-          description: Book detail with HATEOAS links
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/BookWithLinks'
-        '404':
-          description: Book not found
-    put:
-      summary: Update a book
-      description: Cập nhật thông tin của một quyển sách.
-      parameters:
-        - name: bookId
-          in: path
-          required: true
-          schema:
-            type: integer
+          description: Tham số không hợp lệ
+    post:
+      summary: Tạo sách mới
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/BookInput'
+              $ref: '#/components/schemas/NewBook'
       responses:
-        '200':
-          description: Book updated successfully
-        '400':
-          description: Invalid input
-        '404':
-          description: Book not found
-    delete:
-      summary: Delete a book
-      description: Xóa một quyển sách khỏi hệ thống.
+        '201':
+          description: Sách được tạo thành công
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message: { type: string }
+                  book_id: { type: integer }
+        '400': { description: Dữ liệu không hợp lệ }
+        '500': { description: Lỗi khi thêm vào database }
+
+  /books/{book_id}:
+    get:
+      summary: Lấy chi tiết một sách
       parameters:
-        - name: bookId
+        - name: book_id
           in: path
           required: true
-          schema:
-            type: integer
+          schema: { type: integer }
+        - name: If-None-Match
+          in: header
+          schema: { type: string }
+          description: ETag để kiểm tra cache hợp lệ
       responses:
-        '204':
-          description: Book deleted successfully
-        '404':
-          description: Book not found
+        '200':
+          description: Thông tin chi tiết của sách
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Book'
+        '304': { description: Dữ liệu chưa thay đổi }
+        '404': { description: Không tìm thấy sách }
+    put:
+      summary: Cập nhật thông tin sách
+      parameters:
+        - name: book_id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NewBook'
+      responses:
+        '200': { description: Cập nhật thành công }
+        '404': { description: Không tìm thấy sách }
+        '400': { description: Dữ liệu không hợp lệ }
+        '500': { description: Lỗi database }
+    delete:
+      summary: Xóa sách
+      parameters:
+        - name: book_id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        '204': { description: Xóa thành công }
+        '404': { description: Không tìm thấy sách }
+        '500': { description: Lỗi database }
+
+  /books/cursor:
+    get:
+      summary: Danh sách sách (Cursor-based Pagination)
+      description: Phân trang theo khóa (cursor_id) để tối ưu hiệu năng.
+      parameters:
+        - name: limit
+          in: query
+          schema: { type: integer, default: 20, minimum: 1, maximum: 100 }
+        - name: cursor_id
+          in: query
+          schema: { type: integer }
+          description: ID của bản ghi cuối cùng trang trước
+        - name: author
+          in: query
+          schema: { type: string }
+        - name: If-None-Match
+          in: header
+          schema: { type: string }
+      responses:
+        '200':
+          description: Danh sách sách theo cursor
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  metadata:
+                    type: object
+                    properties:
+                      pagination_strategy: { type: string, example: "cursor_based" }
+                      limit: { type: integer }
+                      current_cursor_id: { type: string }
+                      next_cursor_id: { type: string }
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Book'
+                  links:
+                    type: object
+        '304': { description: Dữ liệu chưa thay đổi }
 
   /transactions:
     post:
-      summary: Create a new transaction
-      description: Tạo giao dịch mượn hoặc trả sách.
+      summary: Tạo giao dịch mượn/trả sách
       requestBody:
         required: true
         content:
@@ -123,135 +190,89 @@ paths:
               $ref: '#/components/schemas/TransactionInput'
       responses:
         '201':
-          description: Transaction created successfully
+          description: Giao dịch được ghi thành công
           content:
             application/json:
               schema:
                 type: object
                 properties:
-                  message:
-                    type: string
-                  transaction_id:
-                    type: integer
-        '400':
-          description: Invalid input or insufficient copies
-        '404':
-          description: User or book not found
+                  message: { type: string }
+                  transaction_id: { type: integer }
+        '400': { description: Dữ liệu không hợp lệ hoặc không đủ sách }
+        '500': { description: Lỗi database }
 
-  /users/{userId}/books:
+  /users/{user_id}/books:
     get:
-      summary: Get user's related books
-      description: Lấy danh sách sách mà người dùng đã **mượn** hoặc **trả**.  
-        Dùng query param `relation` để chọn loại giao dịch.
+      summary: Danh sách sách mà người dùng đã mượn hoặc trả
       parameters:
-        - name: userId
+        - name: user_id
           in: path
           required: true
-          schema:
-            type: integer
-          description: ID người dùng
+          schema: { type: integer }
         - name: relation
           in: query
-          required: false
-          description: |
-            Kiểu quan hệ giữa user và sách:
-            - `borrowed`: sách đã mượn
-            - `returned`: sách đã trả
           schema:
             type: string
             enum: [borrowed, returned]
             default: borrowed
+          description: Loại giao dịch cần xem
+        - name: If-None-Match
+          in: header
+          schema: { type: string }
       responses:
         '200':
-          description: List of user's borrowed or returned books
+          description: Danh sách sách của người dùng
           content:
             application/json:
               schema:
                 type: array
                 items:
-                  $ref: '#/components/schemas/UserBookRelation'
-        '400':
-          description: Invalid relation type
-        '404':
-          description: User not found
+                  $ref: '#/components/schemas/UserBook'
+        '304': { description: Dữ liệu chưa thay đổi }
 
 components:
   schemas:
     Book:
       type: object
       properties:
-        id:
-          type: integer
-        title:
-          type: string
-        author:
-          type: string
-        available_copies:
-          type: integer
-      example:
-        id: 1
-        title: "1984"
-        author: "George Orwell"
-        available_copies: 6
+        id: { type: integer }
+        title: { type: string }
+        author: { type: string }
+        available_copies: { type: integer }
+        links:
+          type: array
+          items:
+            type: object
+            properties:
+              rel: { type: string }
+              href: { type: string }
+              method: { type: string }
 
-    BookInput:
+    NewBook:
       type: object
       required: [title, author, available_copies]
       properties:
-        title:
-          type: string
-        author:
-          type: string
-        available_copies:
-          type: integer
-
-    BookWithLinks:
-      allOf:
-        - $ref: '#/components/schemas/Book'
-        - type: object
-          properties:
-            links:
-              type: array
-              items:
-                type: object
-                properties:
-                  rel:
-                    type: string
-                  href:
-                    type: string
-                  method:
-                    type: string
+        title: { type: string }
+        author: { type: string }
+        available_copies: { type: integer }
 
     TransactionInput:
       type: object
-      required: [userId, bookId, quantity, type]
+      required: [user_id, book_id, quantity, type]
       properties:
-        userId:
-          type: integer
-        bookId:
-          type: integer
-        quantity:
-          type: integer
+        user_id: { type: integer }
+        book_id: { type: integer }
+        quantity: { type: integer }
         type:
           type: string
           enum: [borrow, return]
 
-    UserBookRelation:
+    UserBook:
       type: object
       properties:
-        id:
-          type: integer
-        title:
-          type: string
-        author:
-          type: string
-        available_copies:
-          type: integer
-        transaction_type:
-          type: string
-          enum: [borrow, return]
-        quantity:
-          type: integer
-        date:
-          type: string
-          format: date
+        id: { type: integer }
+        title: { type: string }
+        author: { type: string }
+        quantity: { type: integer }
+        transaction_type: { type: string }
+        date: { type: string, format: date-time }

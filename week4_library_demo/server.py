@@ -165,7 +165,7 @@ def list_books_offset_pagination():
                 "metadata": {
                     "pagination_strategy": "offset_limit",
                     "total_records": total_count,
-                    "page": page,
+                    "page": page,   
                     "limit": limit,
                     "total_pages": total_pages
                 },
@@ -460,4 +460,4 @@ if __name__ == '__main__':
     print(f"🚀 Public URL (ngrok): {public_url.public_url}")
 
     # Chạy Flask server
-    app.run(port=5000)
+    app.run(host="0.0.0.0", port=5000)
