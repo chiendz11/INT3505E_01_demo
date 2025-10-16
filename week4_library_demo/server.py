@@ -1,42 +1,68 @@
-from flask import Flask, make_response, request
-import json, hashlib
+from pyngrok import ngrok
+import json
+import hashlib
+import psycopg2
+from flask import Flask, make_response, request, jsonify
+from contextlib import contextmanager
 
 app = Flask(__name__)
 
 print("Starting server...")
 
 # ==============================
-# Mock Database
+# CẤU HÌNH KẾT NỐI DATABASE
 # ==============================
-books = {
-    1: {"id": 1, "title": "1984", "author": "George Orwell", "available_copies": 6},
-    2: {"id": 2, "title": "To Kill a Mockingbird", "author": "Harper Lee", "available_copies": 4},
-    3: {"id": 3, "title": "The Great Gatsby", "author": "F. Scott Fitzgerald", "available_copies": 5},
+# FIX LỖI XÁC THỰC MẬT KHẨU: 
+# Chúng ta quay lại sử dụng dictionary config để truyền mật khẩu gốc (không mã hóa) 
+# trực tiếp. Điều này giúp psycopg2 tránh mọi lỗi phân tích URL do ký tự đặc biệt.
+DB_CONFIG = {
+    "host": "db.kmsqyluflbifzochdqbn.supabase.co",
+    "port": 5432,
+    "database": "postgres",
+    "user": "postgres",
+    "password": "Bop29042@@5" 
 }
 
-users = {
-    1: {"id": 1, "username": "Alice"},
-    2: {"id": 2, "username": "Bob"},
-    3: {"id": 3, "username": "Chienqt"}
-}
-
-transactions = {
-    1: {"id": 1, "userId": 3, "bookId": 2, "quantity": 1, "type": "borrow", "date": "2023-10-01"},
-    2: {"id": 2, "userId": 3, "bookId": 2, "quantity": 1, "type": "return", "date": "2023-10-05"}
-}
-
-BASE_URL = "http://localhost:5000"
+# ==============================
+# DB CONNECTION MANAGER
+# ==============================
+@contextmanager
+def get_db_connection():
+    """Context manager để kết nối và đảm bảo kết nối được đóng (close)"""
+    conn = None
+    try:
+        # Sử dụng DB_CONFIG dictionary
+        conn = psycopg2.connect(**DB_CONFIG)
+        yield conn
+    except Exception as e:
+        print(f"❌ Database connection error: {e}")
+        if conn:
+            conn.rollback()
+        # Vẫn raise exception để Flask biết request bị lỗi
+        raise
+    finally:
+        if conn:
+            conn.close()
 
 # ==============================
 # Helper: tạo ETag
 # ==============================
 def generate_etag(data):
     """Tạo ETag dựa trên nội dung JSON"""
+    # Đảm bảo dữ liệu là JSON string đã sắp xếp để ETag luôn nhất quán
     json_str = json.dumps(data, sort_keys=True)
     return hashlib.md5(json_str.encode("utf-8")).hexdigest()
 
+def row_to_dict(cursor, row):
+    """Chuyển đổi kết quả truy vấn thành dictionary"""
+    if row is None:
+        return None
+    cols = [col[0] for col in cursor.description]
+    return dict(zip(cols, row))
+
 def add_hateoas_book(book):
     """Thêm link HATEOAS cho resource Book"""
+    BASE_URL = request.url_root.strip('/') # Sử dụng request.url_root để linh hoạt hơn
     book['links'] = [
         {"rel": "self", "href": f"{BASE_URL}/books/{book['id']}", "method": "GET"},
         {"rel": "update", "href": f"{BASE_URL}/books/{book['id']}", "method": "PUT"},
@@ -46,165 +72,236 @@ def add_hateoas_book(book):
     return book
 
 # ==============================
-# Book API
+# Book API - Đã kết nối DB
 # ==============================
 @app.route('/books', methods=['GET'])
 def list_books():
     """Lấy danh sách tất cả sách, có thể lọc theo tác giả"""
     author_filter = request.args.get('author')
-    result = list(books.values())
+    
+    with get_db_connection() as conn:
+        with conn.cursor() as cur:
+            sql = "SELECT id, title, author, available_copies FROM BOOKS"
+            params = []
+            
+            if author_filter:
+                sql += " WHERE LOWER(author) = LOWER(%s)"
+                params.append(author_filter)
 
-    if author_filter:
-        result = [b for b in result if b['author'].lower() == author_filter.lower()]
+            cur.execute(sql, params)
+            
+            # Chuyển kết quả sang dạng list of dicts
+            result = [row_to_dict(cur, row) for row in cur.fetchall()]
 
-    etag = generate_etag(result)
-    if request.headers.get('If-None-Match') == etag:
-        return '', 304  # Không thay đổi
+            # 1. TẠO ETag từ dữ liệu DB
+            etag = generate_etag(result)
+            
+            # 2. KIỂM TRA ETag CACHE
+            if request.headers.get('If-None-Match') == etag:
+                return '', 304  # Dữ liệu không thay đổi
 
-    response = make_response(json.dumps(result), 200)
-    response.headers['Cache-Control'] = 'public, max-age=60'
-    response.headers['Content-Type'] = 'application/json'
-    response.headers['ETag'] = etag
-    return response
+            # 3. TRẢ VỀ RESPONSE 200 MỚI
+            response = make_response(jsonify(result), 200)
+            response.headers['Cache-Control'] = 'public, max-age=60'
+            response.headers['Content-Type'] = 'application/json'
+            response.headers['ETag'] = etag
+            return response
 
 
 @app.route('/books/<int:book_id>', methods=['GET'])
 def get_book(book_id):
-    if book_id not in books:
-        return {"error": "Book not found"}, 404
+    with get_db_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT id, title, author, available_copies FROM BOOKS WHERE id = %s", (book_id,))
+            book = row_to_dict(cur, cur.fetchone())
 
-    book = add_hateoas_book(books[book_id].copy())
-    etag = generate_etag(book)
-    if request.headers.get('If-None-Match') == etag:
-        return '', 304
+            if not book:
+                return jsonify({"error": "Book not found"}), 404
 
-    response = make_response(json.dumps(book), 200)
-    response.headers['Content-Type'] = 'application/json'
-    response.headers['ETag'] = etag
-    response.headers['Cache-Control'] = 'public, max-age=120'
-    return response
+            book = add_hateoas_book(book)
+            etag = generate_etag(book)
+            
+            if request.headers.get('If-None-Match') == etag:
+                return '', 304
+
+            response = make_response(jsonify(book), 200)
+            response.headers['Content-Type'] = 'application/json'
+            response.headers['ETag'] = etag
+            response.headers['Cache-Control'] = 'public, max-age=120'
+            return response
 
 
 @app.route('/books', methods=['POST'])
 def create_book():
     data = request.json
     if not data or not all(k in data for k in ('title', 'author', 'available_copies')):
-        return {"error": "Invalid input"}, 400
+        return jsonify({"error": "Invalid input"}), 400
 
-    book_id = len(books) + 1
-    books[book_id] = {
-        "id": book_id,
-        "title": data['title'],
-        "author": data['author'],
-        "available_copies": data['available_copies']
-    }
-    return {"message": "Book created", "book_id": book_id}, 201
+    with get_db_connection() as conn:
+        with conn.cursor() as cur:
+            try:
+                # INSERT sách mới và trả về ID được tạo
+                sql = "INSERT INTO BOOKS (title, author, available_copies) VALUES (%s, %s, %s) RETURNING id"
+                cur.execute(sql, (data['title'], data['author'], data['available_copies']))
+                book_id = cur.fetchone()[0]
+                conn.commit()
+                return jsonify({"message": "Book created", "book_id": book_id}), 201
+            except Exception as e:
+                conn.rollback()
+                print(f"Error creating book: {e}")
+                return jsonify({"error": "Database error while creating book"}), 500
 
 
 @app.route('/books/<int:book_id>', methods=['PUT'])
 def update_book(book_id):
-    if book_id not in books:
-        return {"error": "Book not found"}, 404
     data = request.json
     if not data or not all(k in data for k in ('title', 'author', 'available_copies')):
-        return {"error": "Invalid input"}, 400
+        return jsonify({"error": "Invalid input"}), 400
 
-    books[book_id].update(data)
-    return {"message": "Book updated successfully"}, 200
+    with get_db_connection() as conn:
+        with conn.cursor() as cur:
+            try:
+                sql = """
+                    UPDATE BOOKS SET 
+                        title = %s, author = %s, available_copies = %s 
+                    WHERE id = %s
+                """
+                cur.execute(sql, (data['title'], data['author'], data['available_copies'], book_id))
+                
+                if cur.rowcount == 0:
+                    return jsonify({"error": "Book not found"}), 404
+                
+                conn.commit()
+                return jsonify({"message": "Book updated successfully"}), 200
+            except Exception as e:
+                conn.rollback()
+                print(f"Error updating book: {e}")
+                return jsonify({"error": "Database error while updating book"}), 500
 
 
 @app.route('/books/<int:book_id>', methods=['DELETE'])
 def delete_book(book_id):
-    if book_id not in books:
-        return {"error": "Book not found"}, 404
-    del books[book_id]
-    return '', 204
+    with get_db_connection() as conn:
+        with conn.cursor() as cur:
+            try:
+                cur.execute("DELETE FROM BOOKS WHERE id = %s", (book_id,))
+                
+                if cur.rowcount == 0:
+                    return jsonify({"error": "Book not found"}), 404
+                
+                conn.commit()
+                return '', 204
+            except Exception as e:
+                conn.rollback()
+                print(f"Error deleting book: {e}")
+                return jsonify({"error": "Database error while deleting book"}), 500
 
 
 # ==============================
-# Transaction API
+# Transaction API - Đã kết nối DB
 # ==============================
 @app.route('/transactions', methods=['POST'])
 def create_transaction():
     """Tạo một giao dịch mượn hoặc trả sách"""
     data = request.json
-    if not data or not all(k in data for k in ('userId', 'bookId', 'quantity', 'type')):
-        return {"error": "Invalid input"}, 400
+    if not data or not all(k in data for k in ('user_id', 'book_id', 'quantity', 'type')):
+        return jsonify({"error": "Invalid input: Requires user_id, book_id, quantity, type"}), 400
 
-    user_id = data['userId']
-    book_id = data['bookId']
+    user_id = data['user_id']
+    book_id = data['book_id']
     quantity = data['quantity']
     tran_type = data['type']
 
-    if user_id not in users or book_id not in books:
-        return {"error": "User or book not found"}, 404
     if tran_type not in ['borrow', 'return']:
-        return {"error": "Invalid transaction type"}, 400
+        return jsonify({"error": "Invalid transaction type, must be 'borrow' or 'return'"}), 400
 
-    if tran_type == 'borrow':
-        if books[book_id]['available_copies'] < quantity:
-            return {"error": "Not enough copies available"}, 400
-        books[book_id]['available_copies'] -= quantity
-    elif tran_type == 'return':
-        books[book_id]['available_copies'] += quantity
+    with get_db_connection() as conn:
+        with conn.cursor() as cur:
+            try:
+                # 1. KIỂM TRA SỰ TỒN TẠI VÀ SỐ LƯỢNG SẴN CÓ
+                cur.execute("SELECT available_copies FROM BOOKS WHERE id = %s", (book_id,))
+                book_row = cur.fetchone()
+                if not book_row:
+                    return jsonify({"error": "Book not found"}), 404
+                available_copies = book_row[0]
 
-    tran_id = len(transactions) + 1
-    transactions[tran_id] = {
-        "id": tran_id,
-        "userId": user_id,
-        "bookId": book_id,
-        "quantity": quantity,
-        "type": tran_type,
-        "date": "2023-10-10"
-    }
+                # 2. XỬ LÝ LOGIC MƯỢN/TRẢ VÀ CẬP NHẬT BOOKS
+                new_copies = available_copies
+                if tran_type == 'borrow':
+                    if available_copies < quantity:
+                        return jsonify({"error": "Not enough copies available"}), 400
+                    new_copies = available_copies - quantity
+                elif tran_type == 'return':
+                    new_copies = available_copies + quantity
+                
+                # Cập nhật số lượng sách
+                cur.execute("UPDATE BOOKS SET available_copies = %s WHERE id = %s", (new_copies, book_id))
 
-    return {"message": "Transaction recorded successfully", "transaction_id": tran_id}, 201
+                # 3. TẠO GIAO DỊCH MỚI
+                sql_insert_tran = """
+                    INSERT INTO TRANSACTIONS (user_id, book_id, quantity, type) 
+                    VALUES (%s, %s, %s, %s) 
+                    RETURNING id
+                """
+                cur.execute(sql_insert_tran, (user_id, book_id, quantity, tran_type))
+                tran_id = cur.fetchone()[0]
+                
+                conn.commit()
+                return jsonify({"message": "Transaction recorded successfully", "transaction_id": tran_id}), 201
+            except Exception as e:
+                conn.rollback()
+                print(f"Error creating transaction: {e}")
+                return jsonify({"error": "Database error: Could not process transaction (Check user_id existence)"}), 500
 
 
 # ==============================
-# User API
+# User API - Đã kết nối DB
 # ==============================
 @app.route('/users/<int:user_id>/books', methods=['GET'])
 def list_user_books(user_id):
     """Lấy danh sách các sách mà người dùng đã mượn hoặc trả"""
-    if user_id not in users:
-        return {"error": "User not found"}, 404
+
+    # Check if user exists (Optional, but good practice)
+    # cur.execute("SELECT id FROM USERS WHERE id = %s", (user_id,))
+    # if not cur.fetchone():
+    #     return jsonify({"error": "User not found"}), 404
 
     relation = request.args.get('relation', 'borrowed')
     if relation not in ['borrowed', 'returned']:
-        return {"error": "Invalid relation type"}, 400
+        return jsonify({"error": "Invalid relation type"}), 400
 
     tran_type = 'borrow' if relation == 'borrowed' else 'return'
 
-    filtered_transactions = [
-        t for t in transactions.values()
-        if t['userId'] == user_id and t['type'] == tran_type
-    ]
+    with get_db_connection() as conn:
+        with conn.cursor() as cur:
+            sql = """
+                SELECT 
+                    b.id, b.title, b.author, 
+                    t.quantity, t.type AS transaction_type, t.transaction_date AS date
+                FROM TRANSACTIONS t
+                JOIN BOOKS b ON t.book_id = b.id
+                WHERE t.user_id = %s AND t.type = %s
+            """
+            cur.execute(sql, (user_id, tran_type))
+            
+            result = [row_to_dict(cur, row) for row in cur.fetchall()]
 
-    result = []
-    for t in filtered_transactions:
-        if t['bookId'] in books:
-            book_info = books[t['bookId']].copy()
-            book_info.update({
-                "transaction_type": t['type'],
-                "quantity": t['quantity'],
-                "date": t['date']
-            })
-            result.append(book_info)
+            etag = generate_etag(result)
+            if request.headers.get('If-None-Match') == etag:
+                return '', 304
 
-    etag = generate_etag(result)
-    if request.headers.get('If-None-Match') == etag:
-        return '', 304
-
-    response = make_response(json.dumps(result), 200)
-    response.headers['Content-Type'] = 'application/json'
-    response.headers['ETag'] = etag
-    return response
+            response = make_response(jsonify(result), 200)
+            response.headers['Content-Type'] = 'application/json'
+            response.headers['ETag'] = etag
+            return response
 
 
 # ==============================
 # Run
 # ==============================
 if __name__ == '__main__':
-    app.run(debug=True, port=5000)
-    
+    public_url = ngrok.connect(5000)
+    print(f"🚀 Public URL (ngrok): {public_url.public_url}")
+
+    # Chạy Flask server
+    app.run(port=5000)
