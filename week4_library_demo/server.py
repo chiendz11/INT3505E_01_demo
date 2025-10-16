@@ -2,7 +2,7 @@ from pyngrok import ngrok
 import json
 import hashlib
 import psycopg2
-from flask import Flask, make_response, request, jsonify
+from flask import Flask, make_response, request, jsonify, url_for
 from contextlib import contextmanager
 
 app = Flask(__name__)
@@ -72,11 +72,139 @@ def add_hateoas_book(book):
     return book
 
 # ==============================
-# Book API - Đã kết nối DB
+# Helper: Tạo HATEOAS cho Pagination
+# ==============================
+def paginate_links(endpoint, current_page, limit, total_count=None, cursor=None, last_id=None):
+    """Tạo các liên kết điều hướng cho phân trang (Offset hoặc Cursor)"""
+    links = {}
+    BASE_URL = request.url_root.strip('/')
+
+    if endpoint == '/books': # Chiến lược 1: Offset-based pagination
+        if total_count is not None:
+            total_pages = (total_count + limit - 1) // limit
+            
+            # Link đầu tiên
+            links['first'] = f"{BASE_URL}{endpoint}?page=1&limit={limit}"
+            
+            # Link trước
+            if current_page > 1:
+                links['prev'] = f"{BASE_URL}{endpoint}?page={current_page - 1}&limit={limit}"
+            
+            # Link sau
+            if current_page < total_pages:
+                links['next'] = f"{BASE_URL}{endpoint}?page={current_page + 1}&limit={limit}"
+            
+            # Link cuối
+            links['last'] = f"{BASE_URL}{endpoint}?page={total_pages}&limit={limit}"
+        
+    elif endpoint == '/books/cursor': # Chiến lược 2: Cursor-based pagination
+        # Link tiếp theo
+        if last_id is not None:
+            # Nếu có kết quả, next cursor là ID cuối cùng
+            links['next'] = f"{BASE_URL}{endpoint}?limit={limit}&cursor_id={last_id}"
+            
+        # Link đầu tiên (Reset)
+        links['first'] = f"{BASE_URL}{endpoint}?limit={limit}"
+        
+    return links
+
+# ==============================
+# Chiến lược 1: OFFSET/LIMIT Pagination
 # ==============================
 @app.route('/books', methods=['GET'])
-def list_books():
-    """Lấy danh sách tất cả sách, có thể lọc theo tác giả"""
+def list_books_offset_pagination():
+    """
+    Chiến lược 1: Phân trang theo OFFSET/LIMIT (dùng tham số page và limit)
+    Sử dụng cho Page Numbering.
+    """
+    # Lấy tham số cho Pagination
+    try:
+        page = int(request.args.get('page', 1))
+        limit = int(request.args.get('limit', 20))
+    except ValueError:
+        return jsonify({"error": "Page and limit must be valid integers"}), 400
+
+    if page < 1 or limit < 1 or limit > 100:
+        return jsonify({"error": "Invalid page or limit value (limit max 100)"}), 400
+
+    offset = (page - 1) * limit
+    author_filter = request.args.get('author')
+    
+    with get_db_connection() as conn:
+        with conn.cursor() as cur:
+            # 1. LẤY TỔNG SỐ LƯỢNG (cho HATEOAS)
+            count_sql = "SELECT COUNT(id) FROM BOOKS"
+            count_params = []
+
+            if author_filter:
+                count_sql += " WHERE LOWER(author) = LOWER(%s)"
+                count_params.append(author_filter)
+            
+            cur.execute(count_sql, count_params)
+            total_count = cur.fetchone()[0]
+            
+            # 2. LẤY DỮ LIỆU CỦA TRANG HIỆN TẠI
+            sql = "SELECT id, title, author, available_copies FROM BOOKS"
+            params = []
+            
+            if author_filter:
+                sql += " WHERE LOWER(author) = LOWER(%s)"
+                params.append(author_filter)
+                
+            sql += " ORDER BY id ASC LIMIT %s OFFSET %s"
+            params.extend([limit, offset])
+
+            cur.execute(sql, params)
+            
+            # Chuyển kết quả sang dạng list of dicts
+            result = [add_hateoas_book(row_to_dict(cur, row)) for row in cur.fetchall()]
+
+            # 3. TẠO RESPONSE BAO GỒM METADATA VÀ LINKS
+            total_pages = (total_count + limit - 1) // limit
+            response_data = {
+                "metadata": {
+                    "pagination_strategy": "offset_limit",
+                    "total_records": total_count,
+                    "page": page,
+                    "limit": limit,
+                    "total_pages": total_pages
+                },
+                "data": result,
+                "links": paginate_links('/books', page, limit, total_count=total_count)
+            }
+
+            # 4. ETag & CACHE
+            etag = generate_etag(response_data)
+            
+            if request.headers.get('If-None-Match') == etag:
+                return '', 304 
+            
+            response = make_response(jsonify(response_data), 200)
+            response.headers['Cache-Control'] = 'public, max-age=60'
+            response.headers['Content-Type'] = 'application/json'
+            response.headers['ETag'] = etag
+            return response
+
+
+# ==============================
+# Chiến lược 2: CURSOR-BASED Pagination
+# ==============================
+@app.route('/books/cursor', methods=['GET'])
+def list_books_cursor_pagination():
+    """
+    Chiến lược 2: Phân trang theo CURSOR (Keyset Pagination)
+    Sử dụng ID của bản ghi cuối cùng làm "cursor" để tìm trang tiếp theo.
+    """
+    try:
+        limit = int(request.args.get('limit', 20))
+        # cursor_id là ID của bản ghi cuối cùng của trang TRƯỚC ĐÓ
+        cursor_id = request.args.get('cursor_id', type=int) 
+    except ValueError:
+        return jsonify({"error": "Limit and cursor_id must be valid integers"}), 400
+
+    if limit < 1 or limit > 100:
+        return jsonify({"error": "Invalid limit value (limit max 100)"}), 400
+        
     author_filter = request.args.get('author')
     
     with get_db_connection() as conn:
@@ -84,32 +212,60 @@ def list_books():
             sql = "SELECT id, title, author, available_copies FROM BOOKS"
             params = []
             
+            where_clauses = []
             if author_filter:
-                sql += " WHERE LOWER(author) = LOWER(%s)"
+                where_clauses.append("LOWER(author) = LOWER(%s)")
                 params.append(author_filter)
+            
+            # KeySet Logic: chỉ lấy các ID lớn hơn ID cursor
+            if cursor_id is not None:
+                where_clauses.append("id > %s")
+                params.append(cursor_id)
+            
+            if where_clauses:
+                sql += " WHERE " + " AND ".join(where_clauses)
+                
+            sql += " ORDER BY id ASC LIMIT %s"
+            params.append(limit)
 
             cur.execute(sql, params)
             
-            # Chuyển kết quả sang dạng list of dicts
-            result = [row_to_dict(cur, row) for row in cur.fetchall()]
-
-            # 1. TẠO ETag từ dữ liệu DB
-            etag = generate_etag(result)
+            result = [add_hateoas_book(row_to_dict(cur, row)) for row in cur.fetchall()]
             
-            # 2. KIỂM TRA ETag CACHE
-            if request.headers.get('If-None-Match') == etag:
-                return '', 304  # Dữ liệu không thay đổi
+            # Xác định cursor cho trang tiếp theo (ID cuối cùng của kết quả)
+            last_id = result[-1]['id'] if result and len(result) == limit else None
+            
+            # 3. TẠO RESPONSE BAO GỒM METADATA VÀ LINKS
+            response_data = {
+                "metadata": {
+                    "pagination_strategy": "cursor_based",
+                    "limit": limit,
+                    "current_cursor_id": cursor_id if cursor_id is not None else "start",
+                    "next_cursor_id": last_id if last_id is not None else "end_of_data"
+                },
+                "data": result,
+                "links": paginate_links('/books/cursor', 1, limit, cursor=cursor_id, last_id=last_id)
+            }
 
-            # 3. TRẢ VỀ RESPONSE 200 MỚI
-            response = make_response(jsonify(result), 200)
+            # 4. ETag & CACHE
+            etag = generate_etag(response_data)
+            
+            if request.headers.get('If-None-Match') == etag:
+                return '', 304 
+            
+            response = make_response(jsonify(response_data), 200)
             response.headers['Cache-Control'] = 'public, max-age=60'
             response.headers['Content-Type'] = 'application/json'
             response.headers['ETag'] = etag
             return response
 
 
+# ==============================
+# Chiến lược 3: SINGLE RESOURCE (Không phân trang)
+# ==============================
 @app.route('/books/<int:book_id>', methods=['GET'])
 def get_book(book_id):
+    """Chiến lược 3: Không phân trang (Single Resource Retrieval)"""
     with get_db_connection() as conn:
         with conn.cursor() as cur:
             cur.execute("SELECT id, title, author, available_copies FROM BOOKS WHERE id = %s", (book_id,))
@@ -198,7 +354,7 @@ def delete_book(book_id):
 
 
 # ==============================
-# Transaction API - Đã kết nối DB
+# Transaction API - KHÔNG THAY ĐỔI
 # ==============================
 @app.route('/transactions', methods=['POST'])
 def create_transaction():
@@ -255,7 +411,7 @@ def create_transaction():
 
 
 # ==============================
-# User API - Đã kết nối DB
+# User API - KHÔNG THAY ĐỔI
 # ==============================
 @app.route('/users/<int:user_id>/books', methods=['GET'])
 def list_user_books(user_id):
