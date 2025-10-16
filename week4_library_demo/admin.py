@@ -4,6 +4,7 @@ import json
 BASE_URL = "http://localhost:5000"
 
 etag_cache = {}
+data_cache = {} 
 
 # ==============================
 # ⚙️ Helper
@@ -23,15 +24,29 @@ def send_request(method: str, endpoint: str, data=None):
 
         res = requests.request(method, url, json=data, params=data if method == "GET" else None, headers=headers)
 
-        # Nếu server trả 304 => dữ liệu cache cũ vẫn dùng được
+        # Xử lý 304 Not Modified
         if res.status_code == 304:
             print("✅ Not Modified (using cached data).")
-            return None
+            # Trả về đối tượng Response "giả" chứa dữ liệu cached
+            if url in data_cache:
+                # Tạo một đối tượng giả mạo (mock) response để chứa dữ liệu cache
+                mock_res = requests.Response()
+                mock_res._content = json.dumps(data_cache[url]).encode('utf-8')
+                mock_res.status_code = 200 # Đánh dấu là thành công (lấy từ cache)
+                return mock_res
+            return None # Không có cache data -> vẫn lỗi
 
-        # Nếu có ETag mới → lưu lại
+        # Xử lý 200 OK (Cập nhật cả ETag và Data)
         if 'ETag' in res.headers:
             etag_cache[url] = res.headers['ETag']
-
+            
+        # LƯU DỮ LIỆU VÀO CACHE TRƯỚC KHI TRẢ VỀ
+        if res.status_code == 200:
+            try:
+                data_cache[url] = res.json()
+            except json.JSONDecodeError:
+                pass # Bỏ qua nếu response không phải JSON
+        
         print(f"⬅️ Status: {res.status_code} {res.reason}")
         return res
     except requests.RequestException as e:
