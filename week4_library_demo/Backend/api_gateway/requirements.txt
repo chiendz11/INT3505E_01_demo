@@ -1,0 +1,8 @@
+﻿Flask
+Flask-Migrate
+Flask-SQLAlchemy
+requests
+requests-file
+requests-toolbelt
+Flask-Cors
+pyngrok
