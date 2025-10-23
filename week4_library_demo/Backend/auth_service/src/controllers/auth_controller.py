@@ -65,6 +65,50 @@ def login():
     )
     return response
 
+@auth_bp.route('/v2/login', methods=['POST'])
+def login_v2():
+    """[V2] Đăng nhập, trả về thông tin user đầy đủ (thêm full_name, avatar_url)."""
+    data = request.json
+    login_identifier = data.get('login')
+    password = data.get('password')
+
+    if not all([login_identifier, password]):
+        return jsonify({"error": "Login và password là bắt buộc"}), 400
+
+    service = AuthService()
+    # [TÁI SỬ DỤNG] Vẫn gọi service y hệt V1
+    user, access_token, refresh_token_data, error = service.login_user(login_identifier, password)
+
+    if error:
+        return jsonify({"error": error}), 401
+
+    # [V2] Response: Trả về nhiều thông tin hơn
+    # (Giả sử model User của bạn có 2 trường 'full_name' và 'avatar_url')
+    user_profile_v2 = {
+        "id": user.id,
+        "email": user.email,
+        "username": user.username,
+        "role": user.role,
+        "full_name": getattr(user, 'full_name', None), # Dùng getattr để tránh lỗi nếu trường không tồn tại
+        "avatar_url": getattr(user, 'avatar_url', None)
+    }
+    
+    response = make_response(jsonify({
+        "access_token": access_token,
+        "user": user_profile_v2 # Gửi object user v2
+    }))
+    
+    # Gửi refresh token qua cookie (HttpOnly, Secure)
+    response.set_cookie(
+        "refresh_token",
+        refresh_token_data['token'], 
+        httponly=True,
+        secure=True, 
+        samesite='None',
+        path='/api/auth/tokens' # Vẫn dùng chung path refresh
+    )
+    return response
+
 @auth_bp.route('/refresh', methods=['PUT'])
 def refresh():
     refresh_token = request.cookies.get('refresh_token')

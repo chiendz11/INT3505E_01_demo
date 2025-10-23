@@ -18,6 +18,7 @@ export async function getMyBorrowedBooks() {
   try {
     // Gọi đến endpoint mới của Gateway
     const response = await axiosInstance.get('/api/me/borrowed-books');
+    // '/api/me/borrowed-books'= 'api/users/user_id/borrowed-books'
     return response.data;
   } catch (error) {
     console.error('Lỗi khi lấy sách đang mượn:', error);
@@ -32,6 +33,8 @@ export async function getMyBorrowedBooks() {
 export async function getMyTransactions() {
   try {
     const response = await axiosInstance.get('/api/me/transactions');
+    // '/api/me/transactions'= 'api/users/user_id/transactions'
+    
     return response.data;
   } catch (error) {
     console.error('Lỗi khi lấy lịch sử giao dịch:', error);

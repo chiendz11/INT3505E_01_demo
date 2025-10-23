@@ -23,6 +23,27 @@ export async function login(credentials) {
     throw error.response?.data || { success: false, message: 'Lỗi khi đăng nhập' };
   }
 }
+// version 2: Thêm field full_name và avatar_url
+export async function loginV2(credentials) {
+  try {
+    // Endpoint V2 (trỏ đến /api/v2/auth/tokens của Gateway)
+    const response = await axiosInstance.post('/api/v2/auth/tokens', credentials);
+    
+    // [ĐỂ DEMO] Log data nhận được ra console
+    console.log("✅ [Auth V2] Đã nhận được response:", response.data);
+
+    // Lưu accessToken (giống V1)
+    if (response.data.access_token) {
+      axiosInstance.setAuthToken(response.data.access_token);
+    }
+
+    return response.data;
+  } catch (error) {
+    console.error('Lỗi trong quá trình đăng nhập (V2):', error);
+    // Ném lỗi ra ngoài để component có thể xử lý
+    throw error.response?.data || { success: false, message: 'Lỗi khi đăng nhập' };
+  }
+}
 
 /**
  * Đăng ký một người dùng mới.

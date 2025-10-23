@@ -36,8 +36,10 @@ export async function listBooks(page = 1, limit = 10, author_filter = '') {
     const params = { page, limit };
     if (author_filter.trim()) params.author_filter = author_filter.trim();
 
-    // 3. GỌI MẠNG
-    const response = await axiosInstance.get('/api/books', { params, headers });
+    // 3. Requesting
+    const response = await axiosInstance.get('/api/book', { params, headers }); 
+    // url là "/api/books?page=1&limit=10&author_filter=John"
+
 
     // 4. XỬ LÝ 200 OK (DỮ LIỆU MỚI)
     // (Lưu ý: axios ném lỗi cho status 304, nên nó sẽ nhảy vào catch)

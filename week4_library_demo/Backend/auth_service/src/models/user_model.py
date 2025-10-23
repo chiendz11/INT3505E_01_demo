@@ -9,6 +9,12 @@ class User(db.Model):
     email = db.Column(db.String(255), unique=True, nullable=False)
     username = db.Column(db.String(100), unique=True, nullable=True)
     hashed_password = db.Column(db.String(255), nullable=True)
+    
+    # --- [MỚI] Thêm 2 trường cho V2 ---
+    full_name = db.Column(db.String(255), nullable=True)
+    avatar_url = db.Column(db.String(1024), nullable=True) # Dùng 1024 cho URL dài
+    # --- --------------------------- ---
+
     role = db.Column(db.String(50), nullable=False, default='user')
     is_active = db.Column(db.Boolean, nullable=False, default=True)
     created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)

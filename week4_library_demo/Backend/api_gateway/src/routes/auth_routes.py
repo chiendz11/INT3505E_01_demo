@@ -70,6 +70,19 @@ def create_token():
     url = current_app.config['AUTH_SERVICE_URL']
     return _proxy_request(url, 'auth/login')
 
+# --- [V2] ĐĂNG NHẬP (BỔ SUNG) ---
+@auth_bp.route('/v2/auth/tokens', methods=['POST'])
+def create_token_v2():
+    """
+    [V2] Tạo một tài nguyên 'token' mới (Đăng nhập) với response đầy đủ.
+    Endpoint: POST /api/v2/auth/tokens
+    Proxy to: auth_service/auth/v2/login
+    """
+    url = current_app.config['AUTH_SERVICE_URL']
+    # Hàm proxy sẽ chuyển tiếp request đến endpoint v2 của auth_service
+    # (Endpoint này bạn đã tạo ở auth_service trong bước trước)
+    return _proxy_request(url, 'auth/v2/login')
+
 @auth_bp.route('/auth/tokens', methods=['PUT'])
 def refresh_token():
     """Cập nhật/Làm mới một 'access token'. Endpoint: PUT /api/auth/tokens"""
