@@ -69,7 +69,7 @@ axiosInstance.interceptors.response.use(
       try {
         // Gọi API refresh token
         const res = await axios.put(
-          `${API_URL}/api/auth/tokens`, 
+          `${API_URL}/api/auth/refresh-token`, 
           {},
           { withCredentials: true }
         );

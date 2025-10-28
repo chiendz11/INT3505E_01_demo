@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { listBooks } from '../apis/bookAPI';
-import { createTransaction } from '../apis/transactionAPI';
+import { createTransaction } from '../apis/transaction-service/rest/transactions.js';
 import { Link } from 'react-router-dom';
 
 // --- Component Modal để xác nhận mượn sách ---

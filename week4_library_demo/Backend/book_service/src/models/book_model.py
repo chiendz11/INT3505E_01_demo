@@ -18,5 +18,4 @@ class Book(db.Model):
             'id': self.id,
             'title': self.title,
             'author': self.author,
-            'available_copies': self.available_copies
         }

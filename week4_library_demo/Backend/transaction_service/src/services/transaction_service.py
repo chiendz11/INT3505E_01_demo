@@ -2,36 +2,28 @@ from flask import current_app
 import requests
 from ..models.transaction_model import Transaction
 from ..repositories.transaction_repository import TransactionRepository
+from .book_service_client import BookServiceClient
 import uuid
 
 class TransactionService:
     def __init__(self):
         self.repo = TransactionRepository()
+        self.book_client = BookServiceClient()
 
     def get_transactions_for_user(self, user_id):
         transactions = self.repo.get_by_user_id(user_id)
         return [t.to_dict() for t in transactions]
     
+    # batch loading để tránh N+1 query problem
     def get_currently_borrowed_for_user(self, user_id):
-        """Service để lấy danh sách sách đang mượn, đã được làm giàu thông tin."""
+        """
+        Batch loading: chỉ gọi 1 lần sang BookService để lấy thông tin các sách liên quan.
+        """
         borrowed_summary = self.repo.get_currently_borrowed_by_user_id(user_id)
-        
         book_ids = [item.book_id for item in borrowed_summary]
-        if not book_ids:
-            return []
 
-        # Gọi sang Book Service để lấy thông tin chi tiết (tên sách,...)
-        books_details = {}
-        try:
-            book_service_url = current_app.config['BOOK_SERVICE_URL']
-            books_info_endpoint = f"{book_service_url}/internal/books/details"
-            response = requests.post(books_info_endpoint, json={"book_ids": book_ids}, timeout=5)
-            response.raise_for_status()
-            books_details = {book['id']: book for book in response.json()}
-        except requests.exceptions.RequestException as e:
-            print(f"Warning: Could not connect to Book Service. {e}")
+        books_details = self.book_client.get_books_details(book_ids)
 
-        # Kết hợp kết quả từ DB và Book Service
         result = []
         for item in borrowed_summary:
             book_info = books_details.get(item.book_id, {})
@@ -42,19 +34,27 @@ class TransactionService:
             })
         return result
 
-    def create_transaction(self, user_id, book_id, quantity, tran_type):
-        """Logic tạo giao dịch, có gọi sang Book Service để cập nhật số lượng."""
-        # ... (Phần logic này giữ nguyên không đổi)
-        book_service_url = current_app.config['BOOK_SERVICE_URL']
-        update_copies_endpoint = f"{book_service_url}/internal/books/update_copies"
 
-        payload = {"book_id": book_id, "quantity": quantity, "type": tran_type}
-        try:
-            response = requests.put(update_copies_endpoint, json=payload, timeout=5)
-            if response.status_code != 200:
-                return None, response.json().get("error", "Lỗi từ Book Service"), response.status_code
-        except requests.exceptions.RequestException as e:
-            return None, f"Không thể kết nối đến Book Service: {e}", 503
+
+# Ví dụ về khi mắc N+1 query problem:
+# result = []
+# for item in borrowed_summary:
+#     # ❌ Gọi 1 request riêng lẻ cho mỗi sách
+#     response = requests.get(f"{book_service_url}/books/{item.book_id}")
+#     book_info = response.json()
+#     result.append({
+#         "book_id": item.book_id,
+#         "book_title": book_info.get("title")
+#     })
+    
+    def create_transaction(self, user_id, book_id, quantity, tran_type):
+        """Tạo giao dịch và cập nhật số lượng sách qua Book Service."""
+        success, error_message, status = self.book_client.update_book_copies(
+            book_id, quantity, tran_type, user_id
+        )
+
+        if not success:
+            return None, error_message, status
 
         new_transaction = Transaction(
             user_id=str(user_id),
@@ -62,6 +62,7 @@ class TransactionService:
             quantity=quantity,
             type=tran_type
         )
+
         saved_transaction = self.repo.add(new_transaction)
         return saved_transaction.to_dict(), None, 201
 

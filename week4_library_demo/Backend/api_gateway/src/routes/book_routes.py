@@ -16,11 +16,6 @@ def get_book_service_url():
 def list_books():
     return _proxy_request(get_book_service_url(), 'books')
 
-@book_bp.route('/books/cursor', methods=['GET'])
-@token_required
-def list_books_cursor():
-    return _proxy_request(get_book_service_url(), 'books/cursor')
-
 @book_bp.route('/books/<int:book_id>', methods=['GET'])
 @token_required
 def get_book(book_id):

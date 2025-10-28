@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
-import { deleteBook, listBooks, updateBook } from '../apis/bookAPI';
+import { deleteBook, listBooks, updateBook } from '../apis/book-service/rest/books.js';
 import { Trash2, Edit, X, ArrowLeft, Search } from 'lucide-react';
 
 const BookFormModal = ({ isOpen, onClose, onSuccess, book }) => {

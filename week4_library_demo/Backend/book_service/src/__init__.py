@@ -4,6 +4,7 @@ from flask import Flask
 from .config import Config      # <-- 1. Import lớp Config mới
 from .database import db         # <-- 2. Import 'db' từ file database.py ở cấp src
 from .controllers.book_controller import book_bp
+from .controllers.book_internal_controller import book_internal_bp
 
 def create_app():
     """Hàm Factory để tạo và cấu hình ứng dụng Flask."""
@@ -24,6 +25,7 @@ def create_app():
 
     # 5. Đăng ký Blueprint
     app.register_blueprint(book_bp)
+    app.register_blueprint(book_internal_bp)
 
     print("Book Service Application Created Successfully!")
     return app

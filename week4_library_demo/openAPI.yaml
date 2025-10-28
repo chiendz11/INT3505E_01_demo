@@ -1,301 +1,202 @@
 openapi: 3.0.0
 info:
-  title: API Gateway cho Dịch vụ Thư viện
-  description: Đây là tài liệu API cho API Gateway, đóng vai trò proxy và xác thực cho các microservice backend (Auth, Books, Transactions).
-  version: 1.0.0
+  title: Library API Gateway
+  version: "1.0.0"
+  description: |
+    API Gateway trung gian giữa Frontend và các microservice:
+    - **Auth Service**: Xác thực, phân quyền, OAuth2
+    - **Book Service**: Quản lý sách
+    - **Transaction Service**: Giao dịch mượn/trả sách
 servers:
-  - url: /
-    description: Server Gateway (đường dẫn tương đối)
+  - url: http://localhost:8080/api
+    description: Local API Gateway Server
+
 tags:
   - name: Auth
-    description: API liên quan đến xác thực, đăng ký, và quản lý token.
+    description: Xác thực người dùng (JWT, OAuth2, Google)
   - name: Books
-    description: API để quản lý sách (yêu cầu xác thực).
+    description: Quản lý tài nguyên sách
   - name: Transactions
-    description: API để quản lý giao dịch mượn/trả sách.
-components:
-  securitySchemes:
-    BearerAuth:
-      type: http
-      scheme: bearer
-      bearerFormat: JWT
-      description: Access Token (JWT) nhận được khi đăng nhập, gửi qua header 'Authorization'.
-  schemas:
-    UserRegister:
-      type: object
-      properties:
-        username:
-          type: string
-          example: newuser
-        email:
-          type: string
-          example: user@example.com
-        password:
-          type: string
-          example: strongpassword123
-    UserLogin:
-      type: object
-      properties:
-        login:
-          type: string
-          example: newuser
-          description: Có thể là username hoặc email
-        password:
-          type: string
-          example: strongpassword123
-    LoginResponse:
-      type: object
-      properties:
-        access_token:
-          type: string
-          example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
-        user:
-          type: object
-          properties:
-            user_id:
-              type: string
-              example: uuid-cho-user
-            username:
-              type: string
-              example: newuser
-            role:
-              type: string
-              example: user
-    Book:
-      type: object
-      properties:
-        id:
-          type: integer
-          example: 1
-        title:
-          type: string
-          example: Lập trình Python
-        author:
-          type: string
-          example: John Doe
-        stock:
-          type: integer
-          example: 10
-    BookCreate:
-      type: object
-      properties:
-        title:
-          type: string
-          example: Sách mới
-        author:
-          type: string
-          example: Tác giả mới
-        stock:
-          type: integer
-          example: 20
-    TransactionCreate:
-      type: object
-      description: Dữ liệu để tạo giao dịch (frontend chỉ cần gửi book_id và type)
-      properties:
-        book_id:
-          type: integer
-          example: 1
-        quantity:
-          type: integer
-          example: 1
-        type:
-          type: string
-          example: borrow
-          enum:
-            - borrow
-            - return
-    BorrowedBook:
-      type: object
-      description: Thông tin sách đang mượn đã được làm giàu
-      properties:
-        book_id:
-          type: integer
-          example: 1
-        book_title:
-          type: string
-          example: Lập trình Python
-        borrowed_count:
-          type: integer
-          example: 1
-    ErrorResponse:
-      type: object
-      properties:
-        error:
-          type: string
-          example: Service is unavailable
+    description: Quản lý giao dịch mượn / trả sách
+
 paths:
   /users:
     post:
-      tags:
-        - Auth
+      tags: [Auth]
       summary: Đăng ký người dùng mới
-      description: 'Tạo một tài nguyên ''user'' mới. Endpoint: POST /api/users'
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/UserRegister'
+              type: object
+              required: [email, username, password]
+              properties:
+                email:
+                  type: string
+                username:
+                  type: string
+                password:
+                  type: string
       responses:
-        '200':
-          description: Đăng ký thành công
-        '400':
-          description: Dữ liệu không hợp lệ
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-  /auth/tokens:
+        "201":
+          description: Tạo người dùng thành công
+        "400":
+          description: Thiếu thông tin bắt buộc
+
+  /auth/login:
     post:
-      tags:
-        - Auth
-      summary: Đăng nhập và lấy token
-      description: 'Tạo một tài nguyên ''token'' mới (Đăng nhập). Endpoint: POST /api/auth/tokens'
+      tags: [Auth]
+      summary: Đăng nhập (tạo access token)
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/UserLogin'
+              type: object
+              required: [login, password]
+              properties:
+                login:
+                  type: string
+                  example: "user@example.com"
+                password:
+                  type: string
+                  example: "123456"
       responses:
-        '200':
-          description: Đăng nhập thành công, trả về access_token và thông tin user.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/LoginResponse'
-        '401':
+        "200":
+          description: Trả về access token và thông tin user
+        "401":
           description: Sai thông tin đăng nhập
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+
+  /auth/refresh-token:
     put:
-      tags:
-        - Auth
-      summary: Làm mới Access Token
-      description: 'Cập nhật/Làm mới một ''access token'' (dùng Refresh Token trong HttpOnly cookie). Endpoint: PUT /api/auth/tokens'
+      tags: [Auth]
+      summary: Làm mới access token bằng refresh token
       security:
-        - BearerAuth: []
+        - bearerAuth: []
       responses:
-        '200':
-          description: Làm mới thành công
-          content:
-            application/json:
-              schema:
-                properties:
-                  access_token:
-                    type: string
-        '401':
-          description: Refresh token không hợp lệ
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+        "200":
+          description: Token mới được cấp
+        "401":
+          description: Token không hợp lệ hoặc hết hạn
+
+  /auth/logout:
     delete:
-      tags:
-        - Auth
-      summary: Đăng xuất
-      description: 'Xóa một tài nguyên ''token'' (Đăng xuất). Endpoint: DELETE /api/auth/tokens'
+      tags: [Auth]
+      summary: Đăng xuất người dùng hiện tại
+      description: |
+        Hủy hiệu lực của token hiện tại.  
+        Refresh token được gửi kèm trong **HTTP Cookie**.
+        - Access token được xác thực qua header: `Authorization: Bearer <token>`
+        - Refresh token nằm trong cookie (ví dụ: `refresh_token=<jwt>`)
       security:
-        - BearerAuth: []
+        - bearerAuth: []
       responses:
-        '200':
-          description: Đăng xuất thành công
-        '401':
-          description: Chưa đăng nhập
+        "200":
+          description: Đăng xuất thành công (cookie bị xóa)
+        "401":
+          description: Token không hợp lệ hoặc đã hết hạn
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
+                $ref: '#/components/schemas/Error'
+
   /auth/google/login:
     get:
-      tags:
-        - Auth
-      summary: Bắt đầu luồng đăng nhập Google
-      description: 'Chuyển hướng người dùng đến trang đăng nhập của Google. Endpoint: GET /api/auth/google/login'
+      tags: [Auth]
+      summary: Đăng nhập bằng Google OAuth2
       responses:
-        '302':
-          description: Chuyển hướng đến Google
+        "302":
+          description: Redirect tới trang đăng nhập Google
+
   /auth/google/callback:
     get:
-      tags:
-        - Auth
-      summary: Xử lý callback từ Google
-      description: 'Endpoint mà Google gọi lại sau khi người dùng xác thực. Endpoint: GET /api/auth/google/callback'
-      parameters:
-        - in: query
-          name: code
-          schema:
-            type: string
-          description: Mã code từ Google
-        - in: query
-          name: state
-          schema:
-            type: string
-          description: State
+      tags: [Auth]
+      summary: Callback từ Google OAuth2
       responses:
-        '200':
-          description: Đăng nhập thành công, trả về token (hoặc redirect về frontend với token)
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/LoginResponse'
+        "200":
+          description: Đăng nhập thành công và trả về token
+
+  /users/nplus1:
+    get:
+      tags: [Auth]
+      summary: (Admin) Debug N+1 Query Problem
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Dữ liệu minh họa cho vấn đề N+1
+
+  /users/eager:
+    get:
+      tags: [Auth]
+      summary: (Admin) Debug Eager Loading
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Dữ liệu minh họa cho giải pháp Eager Loading
+
+  /users/batch:
+    get:
+      tags: [Auth]
+      summary: (Admin) Debug Batch Loading
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Dữ liệu minh họa cho Batch Loading
+
   /books:
     get:
-      tags:
-        - Books
-      summary: Lấy danh sách sách (phân trang)
-      description: Bất kỳ 'user' nào cũng có thể xem
+      tags: [Books]
+      summary: Lấy danh sách sách (tự động offset hoặc cursor pagination)
       security:
-        - BearerAuth: []
+        - bearerAuth: []
+      description: |
+        Hỗ trợ 2 loại phân trang:
+        - **Offset**: dùng `page` và `limit`
+        - **Cursor**: dùng `after_cursor` hoặc `before_cursor`
+        - `author_filter`: lọc theo tên tác giả (partial match)
       parameters:
-        - in: query
-          name: page
-          schema:
-            type: integer
-            default: 1
-        - in: query
-          name: limit
-          schema:
-            type: integer
-            default: 10
-        - in: query
-          name: author_filter
-          schema:
-            type: string
-        - in: header
-          name: If-None-Match
-          schema:
-            type: string
-          description: Header ETag để kiểm tra cache (Client tự động gửi)
+        - name: limit
+          in: query
+          schema: { type: integer, default: 20, minimum: 1, maximum: 100 }
+          description: Số bản ghi tối đa mỗi trang
+        - name: page
+          in: query
+          schema: { type: integer, default: 1 }
+          description: Số trang (chỉ dùng khi phân trang kiểu offset)
+        - name: after_cursor
+          in: query
+          schema: { type: string }
+          description: Cursor để lấy trang kế tiếp
+        - name: before_cursor
+          in: query
+          schema: { type: string }
+          description: Cursor để lấy trang trước đó
+        - name: author_filter
+          in: query
+          schema: { type: string }
+          description: Lọc sách theo tên tác giả
       responses:
-        '200':
-          description: Danh sách sách
+        "200":
+          description: Danh sách sách trả về
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/Book'
-          headers:
-            ETag:
-              description: Giá trị ETag của nội dung
-              schema:
-                type: string
-            Cache-Control:
-              description: 'Chỉ thị cache (ví dụ: ''max-age=60'')'
-              schema:
-                type: string
-        '304':
-          description: Not Modified. Nội dung cache của client vẫn hợp lệ (không có body).
+                oneOf:
+                  - $ref: '#/components/schemas/BooksOffsetResponse'
+                  - $ref: '#/components/schemas/BooksCursorResponse'
+        "304":
+          description: Not Modified (ETag matched)
+        "400":
+          description: Tham số không hợp lệ
     post:
-      tags:
-        - Books
-      summary: Tạo sách mới (Chỉ Admin)
-      description: CHỈ ADMIN
+      tags: [Books]
+      summary: (Admin) Tạo sách mới
       security:
-        - BearerAuth: []
+        - bearerAuth: []
       requestBody:
         required: true
         content:
@@ -303,191 +204,186 @@ paths:
             schema:
               $ref: '#/components/schemas/BookCreate'
       responses:
-        '201':
+        "201":
           description: Tạo sách thành công
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Book'
-        '403':
-          description: Không có quyền Admin
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-  /books/cursor:
-    get:
-      tags:
-        - Books
-      summary: Lấy danh sách sách (kiểu cursor)
-      description: Lấy danh sách sách dùng cursor-based pagination
-      security:
-        - BearerAuth: []
-      parameters:
-        - in: query
-          name: cursor
-          schema:
-            type: string
-          description: Cursor cho trang tiếp theo
-      responses:
-        '200':
-          description: Danh sách sách và cursor tiếp theo
+        "403":
+          description: Cần quyền admin
+
   /books/{book_id}:
+    parameters:
+      - name: book_id
+        in: path
+        required: true
+        schema:
+          type: integer
     get:
-      tags:
-        - Books
-      summary: Lấy chi tiết một cuốn sách
+      tags: [Books]
+      summary: Lấy chi tiết 1 sách
       security:
-        - BearerAuth: []
-      parameters:
-        - in: path
-          name: book_id
-          required: true
-          schema:
-            type: integer
-        - in: header
-          name: If-None-Match
-          schema:
-            type: string
-          description: Header ETag để kiểm tra cache (Client tự động gửi)
+        - bearerAuth: []
       responses:
-        '200':
-          description: Chi tiết sách
+        "200":
+          description: Thông tin sách
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Book'
-          headers:
-            ETag:
-              description: Giá trị ETag của nội dung
-              schema:
-                type: string
-            Cache-Control:
-              description: 'Chỉ thị cache (ví dụ: ''max-age=60'')'
-              schema:
-                type: string
-        '304':
-          description: Not Modified. Nội dung cache của client vẫn hợp lệ (không có body).
-        '404':
+        "304":
+          description: Not Modified (ETag matched)
+        "404":
           description: Không tìm thấy sách
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
     put:
-      tags:
-        - Books
-      summary: Cập nhật sách (Chỉ Admin)
-      description: CHỈ ADMIN
+      tags: [Books]
+      summary: (Admin) Cập nhật thông tin sách
       security:
-        - BearerAuth: []
-      parameters:
-        - in: path
-          name: book_id
-          required: true
-          schema:
-            type: integer
+        - bearerAuth: []
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/BookCreate'
+              $ref: '#/components/schemas/BookUpdate'
       responses:
-        '200':
+        "200":
           description: Cập nhật thành công
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Book'
-        '403':
-          description: Không có quyền Admin
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '404':
+        "404":
           description: Không tìm thấy sách
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
     delete:
-      tags:
-        - Books
-      summary: Xóa sách (Chỉ Admin)
-      description: CHỈ ADMIN
+      tags: [Books]
+      summary: (Admin) Xóa sách
       security:
-        - BearerAuth: []
-      parameters:
-        - in: path
-          name: book_id
-          required: true
-          schema:
-            type: integer
+        - bearerAuth: []
       responses:
-        '200':
+        "204":
           description: Xóa thành công
-        '403':
-          description: Không có quyền Admin
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '404':
+        "404":
           description: Không tìm thấy sách
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+
   /transactions:
     post:
-      tags:
-        - Transactions
-      summary: Tạo giao dịch (mượn/trả)
-      description: Tạo giao dịch cho user đang đăng nhập. Gateway sẽ tự động thêm 'user_id' vào body request.
+      tags: [Transactions]
+      summary: Tạo giao dịch (mượn/trả sách)
       security:
-        - BearerAuth: []
+        - bearerAuth: []
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/TransactionCreate'
+              type: object
+              required: [book_id, quantity, type]
+              properties:
+                book_id: { type: integer }
+                quantity: { type: integer }
+                type: { type: string, example: "borrow" }
       responses:
-        '201':
-          description: Tạo giao dịch thành công
-        '400':
-          description: 'Dữ liệu không hợp lệ (ví dụ: hết sách)'
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+        "201":
+          description: Giao dịch được tạo thành công
+        "400":
+          description: Dữ liệu không hợp lệ
+
   /me/borrowed-books:
     get:
-      tags:
-        - Transactions
-      summary: Lấy danh sách sách đang mượn của tôi
-      description: Lấy danh sách sách đang mượn của user hiện tại.
+      tags: [Transactions]
+      summary: Lấy danh sách sách đang mượn của user hiện tại
       security:
-        - BearerAuth: []
+        - bearerAuth: []
       responses:
-        '200':
-          description: Danh sách sách đang mượn (đã làm giàu thông tin)
+        "200":
+          description: Danh sách sách đang mượn
           content:
             application/json:
               schema:
                 type: array
                 items:
                   $ref: '#/components/schemas/BorrowedBook'
+
   /me/transactions:
     get:
-      tags:
-        - Transactions
-      summary: Lấy lịch sử giao dịch của tôi
-      description: Lấy toàn bộ lịch sử giao dịch của user hiện tại.
+      tags: [Transactions]
+      summary: Lấy lịch sử giao dịch của user hiện tại
       security:
-        - BearerAuth: []
+        - bearerAuth: []
       responses:
-        '200':
-          description: Danh sách tất cả giao dịch
+        "200":
+          description: Danh sách giao dịch
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Transaction'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    Book:
+      type: object
+      properties:
+        id: { type: integer }
+        title: { type: string }
+        author: { type: string }
+        available_copies: { type: integer }
+    BookCreate:
+      type: object
+      required: [title, author, available_copies]
+      properties:
+        title: { type: string }
+        author: { type: string }
+        available_copies: { type: integer }
+    BookUpdate:
+      type: object
+      properties:
+        title: { type: string }
+        author: { type: string }
+        available_copies: { type: integer }
+    BooksOffsetResponse:
+      type: object
+      properties:
+        pagination_type: { type: string, example: "offset" }
+        page: { type: integer }
+        limit: { type: integer }
+        total: { type: integer }
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/Book' }
+    BooksCursorResponse:
+      type: object
+      properties:
+        pagination_type: { type: string, example: "cursor" }
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/Book' }
+        next_cursor: { type: string, nullable: true }
+        prev_cursor: { type: string, nullable: true }
+        has_more: { type: boolean }
+    Transaction:
+      type: object
+      properties:
+        id: { type: string }
+        user_id: { type: string }
+        book_id: { type: integer }
+        type: { type: string, enum: [borrow, return] }
+        quantity: { type: integer }
+        status: { type: string, example: "completed" }
+    BorrowedBook:
+      type: object
+      properties:
+        book:
+          $ref: '#/components/schemas/Book'
+        borrowed_at:
+          type: string
+          format: date-time
+        due_date:
+          type: string
+          format: date-time
+    Error:
+      type: object
+      properties:
+        error:
+          type: string

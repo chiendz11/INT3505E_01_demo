@@ -102,12 +102,11 @@ export const storageCache = {
       Object.keys(localStorage)
         .filter(k => k.startsWith(fullPrefix))
         .forEach(k => localStorage.removeItem(k));
+    },
+    
+    parseMaxAge: (cacheControlHeader) => { // <<< Đã thêm vào object storageCache
+        if (!cacheControlHeader) return 0;
+        const match = cacheControlHeader.match(/max-age=(\d+)/);
+        return match ? parseInt(match[1], 10) : 0;
     }
-  };
-  
-  // Hàm helper parse max-age (giữ nguyên)
-  function parseMaxAge(cacheControlHeader) {
-    if (!cacheControlHeader) return 0;
-    const match = cacheControlHeader.match(/max-age=(\d+)/);
-    return match ? parseInt(match[1], 10) : 0;
   }

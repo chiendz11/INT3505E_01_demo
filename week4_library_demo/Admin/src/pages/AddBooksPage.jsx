@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { createBook } from '../apis/bookAPI'; // Giả sử file này tồn tại
+import { createBook } from '../apis/book-service/rest/books.js'; 
 import { ArrowLeft } from 'lucide-react';
 
 const AddBookPage = () => {

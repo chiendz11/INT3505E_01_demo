@@ -8,13 +8,18 @@ def create_app():
 
     # Lấy Origin của Frontend từ Config
     frontend_origin = app.config.get('FRONTEND_ORIGIN')
+    swager_ui_origin = "https://app.swaggerhub.com"
     
     # --- Cấu hình CORS ---
     # Thiết lập CORS chỉ cho phép Frontend Origin đã được cấu hình
     CORS(
         app,
-        resources={r"/api/*": {"origins": [frontend_origin]}}, # CHỈ cho phép Origin đã được định nghĩa trong FRONTEND_ORIGIN
-        supports_credentials=True, # Cho phép gửi cookies/headers xác thực
+        resources={r"/api/*": {"origins": [frontend_origin, swager_ui_origin]}},
+        supports_credentials=True, 
+        # !!! THÊM THAM SỐ allowed_headers !!!
+        # Cần thêm 'If-None-Match' để hỗ trợ ETag.
+        # Thêm 'Content-Type' và 'Authorization' (nếu dùng cho token/cookies) là thực tế.
+        allow_headers=['Content-Type', 'Authorization', 'If-None-Match'], 
     )
 
     # Đăng ký các blueprint với một prefix chung là /api

@@ -13,7 +13,7 @@ if __name__ == '__main__':
     
     print("="*50)
     print(f"✅ API Gateway đang chạy tại: http://localhost:8080")
-    print(f"✅ Swagger UI Public URL (ngrok): {http_tunnel.public_url}") 
+    print(f"✅ Swagger UI Public URL (ngrok): {http_tunnel.public_url}/api") # Giả sử /swagger là route của bạn
     print("="*50)
 
     # Chạy app Flask của bạn

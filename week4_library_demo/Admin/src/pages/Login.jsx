@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { login, register, loginWithGoogle } from '../apis/authAPI.js';
+import { login } from '../apis/auth-service/auth/authAPI.js';
+import { register } from '../apis/auth-service/auth/rest/users.js';
+import { loginWithGoogle } from '../apis/auth-service/oauth2.0/google.js';
 import axiosInstance from '../config/axiosConfig.js';
 import { Eye, EyeOff, X } from 'lucide-react';
 
@@ -91,15 +93,15 @@ const Login = () => {
                     const user = JSON.parse(decodeURIComponent(userStrEncoded));
                     axiosInstance.setAuthToken(accessTokenFromGoogle);
                     localStorage.setItem('user', JSON.stringify(user));
-                    
+
                     // [FIX] Chuyển hướng đến /dashboard cho BẤT KỲ vai trò nào
-                    navigate('/dashboard'); 
+                    navigate('/dashboard');
                 } catch (e) {
                     console.error("Lỗi xử lý callback từ Google:", e);
                     setError("Lỗi xử lý thông tin đăng nhập từ Google.");
                 }
             } else if (hash.includes('error')) {
-                 setError("Đăng nhập bằng Google thất bại. Vui lòng thử lại.");
+                setError("Đăng nhập bằng Google thất bại. Vui lòng thử lại.");
             }
             // Xóa hash khỏi URL để tránh xử lý lại
             window.history.replaceState(null, "", window.location.pathname + window.location.search);
@@ -149,8 +151,8 @@ const Login = () => {
 
     return (
         <>
-            <RegisterModal 
-                isOpen={isRegisterModalOpen} 
+            <RegisterModal
+                isOpen={isRegisterModalOpen}
                 onClose={() => setIsRegisterModalOpen(false)}
                 onRegisterSuccess={handleRegisterSuccess}
             />
@@ -182,7 +184,7 @@ const Login = () => {
                             <div className="flex-grow border-t border-gray-300"></div><span className="flex-shrink mx-4 text-gray-500 text-sm">HOẶC</span><div className="flex-grow border-t border-gray-300"></div>
                         </div>
                         <button onClick={loginWithGoogle} className="w-full flex items-center justify-center bg-white border border-gray-300 text-gray-700 py-3 rounded-md mb-6 hover:bg-gray-100 transition-colors">
-                            <img src="https://fonts.gstatic.com/s/i/productlogos/googleg/v6/24px.svg" alt="Google icon" className="w-5 h-5 mr-3"/>
+                            <img src="https://fonts.gstatic.com/s/i/productlogos/googleg/v6/24px.svg" alt="Google icon" className="w-5 h-5 mr-3" />
                             <span className="font-semibold">Đăng nhập với Google</span>
                         </button>
                         <p className="text-center text-sm text-gray-600">

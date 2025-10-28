@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 // Sửa import: Dùng hàm API mới, bỏ hàm cũ
-import { getMyBorrowedBooks, createTransaction } from '../apis/transactionAPI';
+import  { createTransaction } from '../apis/transaction-service/rest/transactions.js';
 
 // --- Component Modal để xác nhận trả sách (Giữ nguyên không đổi) ---
 const ReturnModal = ({ book, onClose, onSuccess }) => {

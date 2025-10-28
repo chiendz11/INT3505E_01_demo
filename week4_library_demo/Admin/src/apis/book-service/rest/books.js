@@ -1,8 +1,8 @@
 // File: src/apis/bookAPI.js
 
-import axiosInstance from '../config/axiosConfig';
+import axiosInstance from '../../../config/axiosConfig';
 // Giả sử đường dẫn này đúng: src/apis/ -> ../ -> src/ -> utils/storageCache.js
-import { storageCache } from '../utils/storageCache';
+import { storageCache } from '../../../utils/storageCache';
 
 
 // --- HÀM DÀNH CHO CẢ USER VÀ ADMIN ---
@@ -10,6 +10,7 @@ import { storageCache } from '../utils/storageCache';
 // Định nghĩa key tập trung
 const listBooksKey = (page, limit, author) => `list_books_${page}|${limit}|${author}`;
 const bookKey = (id) => `book_${id}`;
+const listBooksCursorKey = (limit, after, before) => `list_books_cursor_${limit}|${after || 'null'}|${before || 'null'}`;
 
 
 export async function listBooks(page = 1, limit = 10, author_filter = '') {
@@ -37,7 +38,7 @@ export async function listBooks(page = 1, limit = 10, author_filter = '') {
     if (author_filter.trim()) params.author_filter = author_filter.trim();
 
     // 3. Requesting
-    const response = await axiosInstance.get('/api/book', { params, headers }); 
+    const response = await axiosInstance.get('/api/books', { params, headers }); 
     // url là "/api/books?page=1&limit=10&author_filter=John"
 
 
@@ -81,14 +82,84 @@ export async function listBooks(page = 1, limit = 10, author_filter = '') {
   }
 }
 
-export async function listBooksCursor(cursor = null) {
+export async function listBooksCursor(options = {}) {
+  const { limit = 10, afterCursor = null, beforeCursor = null } = options;
+
+  // 0. VALIDATE (Giống logic controller)
+  if (afterCursor && beforeCursor) {
+    console.error("Không thể dùng afterCursor và beforeCursor cùng lúc.");
+    throw new Error("Cannot use both afterCursor and beforeCursor");
+  }
+
   try {
-    const params = cursor ? { cursor } : {};
-    // Tương ứng với: GET /api/books/cursor
-    // (Cursor-based pagination thường không cache theo kiểu này, nên bỏ qua cache là OK)
-    const response = await axiosInstance.get('/api/books/cursor', { params });
-    return response.data;
+    const key = listBooksCursorKey(limit, afterCursor, beforeCursor);
+
+    // 1. KIỂM TRA CACHE "TƯƠI"
+    const freshData = storageCache.getFresh(key);
+    if (freshData) {
+      console.log("CACHE HIT (Fresh/localStorage):", key);
+      return freshData;
+    }
+
+    // 2. CHUẨN BỊ GỌI MẠNG
+    const headers = {};
+    const staleCache = storageCache.getStale(key);
+    
+    if (staleCache?.etag) {
+      console.log("CACHE STALE (Validating/localStorage):", key);
+      headers['If-None-Match'] = staleCache.etag;
+    } else {
+      console.log("CACHE MISS (Fetching/localStorage):", key);
+    }
+
+    const params = { limit };
+    if (afterCursor) {
+      params.after_cursor = afterCursor; 
+    }
+    if (beforeCursor) {
+      params.before_cursor = beforeCursor;
+    }
+
+    // 3. Requesting
+    // URL sẽ là:
+    // /api/books?limit=10 (lần đầu)
+    // /api/books?limit=10&after_cursor=XYZ (cuộn xuống)
+    // /api/books?limit=10&before_cursor=ABC (cuộn lên)
+    const response = await axiosInstance.get('/api/books', { params, headers });
+
+    // 4. XỬ LÝ 200 OK
+    if (response.status === 200) {
+      console.log("NETWORK 200 (Updating localStorage):", key);
+      const maxAgeInSeconds = storageCache.parseMaxAge(response.headers['cache-control']);
+      storageCache.set(
+        key,
+        response.data,
+        response.headers.etag,
+        maxAgeInSeconds
+      );
+      return response.data;
+    }
   } catch (error) {
+    // 5. XỬ LÝ 304 NOT MODIFIED
+    const key = listBooksCursorKey(limit, afterCursor, beforeCursor);
+    
+    if (error.response?.status === 304) {
+      console.log("NETWORK 304 (Re-validating localStorage):", key);
+      const staleCache = storageCache.getStale(key);
+
+      if (staleCache) {
+        const maxAgeInSeconds = storageCache.parseMaxAge(error.response.headers['cache-control']);
+        storageCache.set(
+          key,
+          staleCache.data,
+          staleCache.etag,
+          maxAgeInSeconds
+        );
+        return staleCache.data;
+      }
+    }
+    
+    // 6. XỬ LÝ LỖI THỰC SỰ
     console.error('Lỗi khi lấy danh sách sách (cursor):', error);
     throw error.response?.data || { message: 'Không thể tải danh sách sách' };
   }

@@ -5,6 +5,7 @@ from flask import current_app
 from flask_bcrypt import Bcrypt
 from ..models.user_model import User, RefreshToken
 from ..repositories.user_repository import UserRepository
+from sqlalchemy.orm import joinedload, selectinload
 
 bcrypt = Bcrypt()
 
@@ -52,6 +53,7 @@ class AuthService:
         
         # [FIX] Trả về user object cùng với tokens
         return user, access_token, refresh_token_data, None
+            
 
     def _generate_access_token(self, user):
         payload = {
@@ -141,4 +143,33 @@ class AuthService:
         except jwt.InvalidTokenError:
             return None, "Token không hợp lệ"
         
-        
+    def get_users_with_nplus1(self):
+        """❌ Ví dụ gây ra N+1 Query Problem"""
+        users = User.query.all()  # 1 query
+        result = []
+        for user in users:
+            providers = [identity.provider for identity in user.oauth_identities]  # N query
+            result.append({
+                "id": user.id,
+                "username": user.username,
+                "providers": providers
+            })
+        return result
+
+    def get_users_with_eager_loading(self):
+        """✅ Eager Loading: joinedload"""
+        users = User.query.options(joinedload(User.oauth_identities)).all()
+        return [{
+            "id": user.id,
+            "username": user.username,
+            "providers": [i.provider for i in user.oauth_identities]
+        } for user in users]
+
+    def get_users_with_batch_loading(self):
+        """✅ Batch Loading: selectinload"""
+        users = User.query.options(selectinload(User.oauth_identities)).all()
+        return [{
+            "id": user.id,
+            "username": user.username,
+            "providers": [i.provider for i in user.oauth_identities]
+        } for user in users]

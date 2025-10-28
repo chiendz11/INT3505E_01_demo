@@ -23,7 +23,6 @@ class BookRepository:
     def get_all_cursor(self, limit, cursor_id=None, author_filter=None):
         """Lấy sách theo Cursor-Based Pagination (Keyset)"""
         query = Book.query
-        where_clauses = []
 
         if author_filter:
             query = query.filter(func.lower(Book.author) == func.lower(author_filter))
