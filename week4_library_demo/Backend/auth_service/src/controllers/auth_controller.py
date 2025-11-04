@@ -320,8 +320,7 @@ def google_callback():
         result = service.handle_google_user(user_info) 
 
         # Gửi dữ liệu user + token về frontend qua redirect
-        user_json = quote(json.dumps(result["user"]))
-        redirect_url = f"{frontend_url}#accessToken={result['access_token']}&user={user_json}"
+        redirect_url = f"{frontend_url}?login=success"
 
         response = make_response(redirect(redirect_url)) 
         

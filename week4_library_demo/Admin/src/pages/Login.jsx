@@ -81,32 +81,43 @@ const Login = () => {
 
     // Xử lý callback từ Google sau khi đăng nhập thành công
     useEffect(() => {
-        const hash = location.hash;
-        if (hash.includes('accessToken') && hash.includes('user')) {
-            const params = new URLSearchParams(hash.substring(1));
-            const accessTokenFromGoogle = params.get('accessToken');
-            const userStrEncoded = params.get('user');
+  const params = new URLSearchParams(location.search);
+  const loginSuccess = params.get('login');
+  const loginError = params.get('error');
 
-            if (accessTokenFromGoogle && userStrEncoded) {
-                try {
-                    console.log(accessTokenFromGoogle, "\n", userStrEncoded)
-                    const user = JSON.parse(decodeURIComponent(userStrEncoded));
-                    axiosInstance.setAuthToken(accessTokenFromGoogle);
-                    localStorage.setItem('user', JSON.stringify(user));
+  if (loginSuccess === 'success') {
+    try {
+      // Lấy access_token từ cookie hoặc từ URL nếu backend trả về
+      const access_token = localStorage.getItem('access_token'); 
+      if (!access_token) {
+        throw new Error('Không tìm thấy access token.');
+      }
 
-                    // [FIX] Chuyển hướng đến /dashboard cho BẤT KỲ vai trò nào
-                    navigate('/dashboard');
-                } catch (e) {
-                    console.error("Lỗi xử lý callback từ Google:", e);
-                    setError("Lỗi xử lý thông tin đăng nhập từ Google.");
-                }
-            } else if (hash.includes('error')) {
-                setError("Đăng nhập bằng Google thất bại. Vui lòng thử lại.");
-            }
-            // Xóa hash khỏi URL để tránh xử lý lại
-            window.history.replaceState(null, "", window.location.pathname + window.location.search);
-        }
-    }, [location, navigate]);
+      // ✅ Giải mã access token (JWT)
+      const decoded = jwtDecode(access_token);
+      console.log("Giải mã access_token:", decoded);
+
+      // Tùy vào cách backend tạo token, các trường có thể là sub, email, name, role,...
+      const user = {
+        id: decoded.sub,
+        name: decoded.name,
+        role: decoded.role || 'user',
+      };
+
+      // Cấu hình axios và lưu vào localStorage
+      axiosInstance.setAuthToken(access_token);
+      localStorage.setItem('user', JSON.stringify(user));
+
+      // Điều hướng đến dashboard
+      navigate('/dashboard');
+    } catch (err) {
+      console.error('Lỗi khi giải mã access token:', err);
+      setError('Đăng nhập bằng Google thất bại. Vui lòng thử lại.');
+    }
+  } else if (loginError) {
+    setError('Đăng nhập bằng Google thất bại. Vui lòng thử lại.');
+  }
+}, [location, navigate]);
 
     const handleInputChange = (e) => {
         const { name, value } = e.target;

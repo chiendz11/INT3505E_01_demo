@@ -1,0 +1,457 @@
+openapi: 3.0.3
+info:
+  description: |
+    API mô tả hệ thống sản phẩm của một nhà sách online (Design-First).   Bao gồm CRUD cho sản phẩm, danh mục, và hiển thị danh sách sản phẩm.
+  title: Bookstore Product API
+  version: 1.0.0
+servers:
+- description: Local Flask Server
+  url: http://localhost:5000/api
+tags:
+- description: "Quản lý sản phẩm (sách, đồ chơi, văn phòng phẩm, ...)"
+  name: Product
+- description: Danh mục sản phẩm
+  name: Category
+paths:
+  /products:
+    get:
+      operationId: productsGET
+      parameters:
+      - description: Lọc sản phẩm theo danh mục
+        explode: true
+        in: query
+        name: category
+        required: false
+        schema:
+          type: string
+        style: form
+      - description: Lọc theo loại sản phẩm
+        explode: true
+        in: query
+        name: type
+        required: false
+        schema:
+          enum:
+          - book
+          - toy
+          - office_supply
+          type: string
+        style: form
+      - description: Số trang hiện tại
+        explode: true
+        in: query
+        name: page
+        required: false
+        schema:
+          default: 1
+          type: integer
+        style: form
+      - description: Số sản phẩm/trang
+        explode: true
+        in: query
+        name: limit
+        required: false
+        schema:
+          default: 20
+          type: integer
+        style: form
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/_products_get_200_response"
+          description: Danh sách sản phẩm kèm thông tin phân trang
+        "400":
+          description: Tham số truy vấn không hợp lệ
+        "500":
+          description: Lỗi máy chủ nội bộ
+      summary: Lấy danh sách tất cả sản phẩm (có phân trang & lọc)
+      tags:
+      - Product
+      x-eov-operation-handler: controllers/ProductController
+    post:
+      operationId: productsPOST
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProductCreate"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Product"
+          description: Sản phẩm được tạo thành công
+        "400":
+          description: Dữ liệu gửi lên không hợp lệ
+        "500":
+          description: Lỗi hệ thống
+      summary: Tạo mới sản phẩm
+      tags:
+      - Product
+      x-eov-operation-handler: controllers/ProductController
+  /products/{id}:
+    delete:
+      operationId: productsIdDELETE
+      parameters:
+      - explode: false
+        in: path
+        name: id
+        required: true
+        schema:
+          type: string
+        style: simple
+      responses:
+        "204":
+          description: Xóa thành công (không có nội dung trả về)
+        "404":
+          description: Không tìm thấy sản phẩm
+        "500":
+          description: Lỗi hệ thống
+      summary: Xóa sản phẩm
+      tags:
+      - Product
+      x-eov-operation-handler: controllers/ProductController
+    get:
+      operationId: productsIdGET
+      parameters:
+      - explode: false
+        in: path
+        name: id
+        required: true
+        schema:
+          type: string
+        style: simple
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Product"
+          description: Thông tin chi tiết sản phẩm
+        "404":
+          description: Không tìm thấy sản phẩm
+        "500":
+          description: Lỗi máy chủ
+      summary: Lấy chi tiết một sản phẩm
+      tags:
+      - Product
+      x-eov-operation-handler: controllers/ProductController
+    put:
+      operationId: productsIdPUT
+      parameters:
+      - explode: false
+        in: path
+        name: id
+        required: true
+        schema:
+          type: string
+        style: simple
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProductUpdate"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Product"
+          description: Cập nhật thành công
+        "400":
+          description: Dữ liệu cập nhật không hợp lệ
+        "404":
+          description: Không tìm thấy sản phẩm
+        "500":
+          description: Lỗi hệ thống
+      summary: Cập nhật thông tin sản phẩm
+      tags:
+      - Product
+      x-eov-operation-handler: controllers/ProductController
+  /categories:
+    get:
+      operationId: categoriesGET
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: "#/components/schemas/Category"
+                type: array
+          description: Danh sách danh mục
+        "500":
+          description: Lỗi máy chủ
+      summary: Lấy danh sách danh mục sản phẩm
+      tags:
+      - Category
+      x-eov-operation-handler: controllers/CategoryController
+components:
+  schemas:
+    Product:
+      example:
+        images:
+        - https://example.com/images/dacnhantam.jpg
+        - https://example.com/images/dacnhantam.jpg
+        author: Dale Carnegie
+        discount: 10
+        description: Cuốn sách kinh điển về nghệ thuật giao tiếp.
+        weight: weight
+        language: Tiếng Việt
+        type: book
+        age_range: age_range
+        createdAt: 2000-01-23T04:56:07.000+00:00
+        material: material
+        size: size
+        price: 135000
+        name: Đắc Nhân Tâm
+        publisher: NXB Trẻ
+        id: p123
+        category: Tâm lý kỹ năng
+        stock: 50
+        brand: brand
+        updatedAt: 2000-01-23T04:56:07.000+00:00
+      properties:
+        id:
+          example: p123
+          type: string
+        name:
+          example: Đắc Nhân Tâm
+          type: string
+        category:
+          example: Tâm lý kỹ năng
+          type: string
+        type:
+          example: book
+          type: string
+        price:
+          example: 135000
+          type: number
+        discount:
+          example: 10
+          type: number
+        stock:
+          example: 50
+          type: integer
+        description:
+          example: Cuốn sách kinh điển về nghệ thuật giao tiếp.
+          type: string
+        images:
+          items:
+            example: https://example.com/images/dacnhantam.jpg
+            type: string
+          type: array
+        author:
+          example: Dale Carnegie
+          type: string
+        publisher:
+          example: NXB Trẻ
+          type: string
+        language:
+          example: Tiếng Việt
+          type: string
+        brand:
+          type: string
+        material:
+          type: string
+        size:
+          type: string
+        weight:
+          type: string
+        age_range:
+          type: string
+        createdAt:
+          format: date-time
+          type: string
+        updatedAt:
+          format: date-time
+          type: string
+      type: object
+    ProductCreate:
+      example:
+        images:
+        - images
+        - images
+        author: author
+        discount: 1.4658129805029452
+        description: description
+        weight: weight
+        language: language
+        type: book
+        age_range: age_range
+        material: material
+        size: size
+        price: 0.8008281904610115
+        name: name
+        publisher: publisher
+        category: category
+        stock: 6
+        brand: brand
+      properties:
+        name:
+          type: string
+        category:
+          type: string
+        type:
+          enum:
+          - book
+          - toy
+          - office_supply
+          type: string
+        price:
+          type: number
+        stock:
+          default: 0
+          type: integer
+        discount:
+          default: 0
+          type: number
+        description:
+          type: string
+        images:
+          items:
+            type: string
+          type: array
+        author:
+          type: string
+        publisher:
+          type: string
+        language:
+          type: string
+        brand:
+          type: string
+        material:
+          type: string
+        size:
+          type: string
+        weight:
+          type: string
+        age_range:
+          type: string
+      required:
+      - category
+      - name
+      - price
+      - type
+      type: object
+    ProductUpdate:
+      example:
+        age_range: age_range
+        images:
+        - images
+        - images
+        material: material
+        size: size
+        price: 0.8008281904610115
+        name: name
+        discount: 1.4658129805029452
+        description: description
+        weight: weight
+        stock: 6
+        brand: brand
+      properties:
+        name:
+          type: string
+        price:
+          type: number
+        stock:
+          type: integer
+        discount:
+          type: number
+        description:
+          type: string
+        images:
+          items:
+            type: string
+          type: array
+        brand:
+          type: string
+        material:
+          type: string
+        size:
+          type: string
+        weight:
+          type: string
+        age_range:
+          type: string
+      type: object
+    Category:
+      example:
+        name: Văn học
+        id: c01
+      properties:
+        id:
+          example: c01
+          type: string
+        name:
+          example: Văn học
+          type: string
+      type: object
+    _products_get_200_response:
+      example:
+        total: 120
+        data:
+        - images:
+          - https://example.com/images/dacnhantam.jpg
+          - https://example.com/images/dacnhantam.jpg
+          author: Dale Carnegie
+          discount: 10
+          description: Cuốn sách kinh điển về nghệ thuật giao tiếp.
+          weight: weight
+          language: Tiếng Việt
+          type: book
+          age_range: age_range
+          createdAt: 2000-01-23T04:56:07.000+00:00
+          material: material
+          size: size
+          price: 135000
+          name: Đắc Nhân Tâm
+          publisher: NXB Trẻ
+          id: p123
+          category: Tâm lý kỹ năng
+          stock: 50
+          brand: brand
+          updatedAt: 2000-01-23T04:56:07.000+00:00
+        - images:
+          - https://example.com/images/dacnhantam.jpg
+          - https://example.com/images/dacnhantam.jpg
+          author: Dale Carnegie
+          discount: 10
+          description: Cuốn sách kinh điển về nghệ thuật giao tiếp.
+          weight: weight
+          language: Tiếng Việt
+          type: book
+          age_range: age_range
+          createdAt: 2000-01-23T04:56:07.000+00:00
+          material: material
+          size: size
+          price: 135000
+          name: Đắc Nhân Tâm
+          publisher: NXB Trẻ
+          id: p123
+          category: Tâm lý kỹ năng
+          stock: 50
+          brand: brand
+          updatedAt: 2000-01-23T04:56:07.000+00:00
+        limit: 20
+        page: 1
+      properties:
+        total:
+          example: 120
+          type: integer
+        page:
+          example: 1
+          type: integer
+        limit:
+          example: 20
+          type: integer
+        data:
+          items:
+            $ref: "#/components/schemas/Product"
+          type: array
+      type: object

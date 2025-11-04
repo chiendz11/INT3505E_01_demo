@@ -1,0 +1,306 @@
+openapi: 3.0.3
+info:
+  title: Bookstore Product API
+  version: 1.0.0
+  description: >
+    API mô tả hệ thống sản phẩm của một nhà sách online (Design-First).  
+    Bao gồm CRUD cho sản phẩm, danh mục, và hiển thị danh sách sản phẩm.
+
+servers:
+  - url: http://localhost:5000/api
+    description: Local Flask Server
+
+tags:
+  - name: Product
+    description: Quản lý sản phẩm (sách, đồ chơi, văn phòng phẩm, ...)
+  - name: Category
+    description: Danh mục sản phẩm
+
+paths:
+  /products:
+    get:
+      summary: Lấy danh sách tất cả sản phẩm (có phân trang & lọc)
+      tags: [Product]
+      parameters:
+        - name: category
+          in: query
+          schema:
+            type: string
+          description: Lọc sản phẩm theo danh mục
+        - name: type
+          in: query
+          schema:
+            type: string
+            enum: [book, toy, office_supply]
+          description: Lọc theo loại sản phẩm
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+          description: Số trang hiện tại
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+          description: Số sản phẩm/trang
+      responses:
+        "200":
+          description: Danh sách sản phẩm kèm thông tin phân trang
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  total:
+                    type: integer
+                    example: 120
+                  page:
+                    type: integer
+                    example: 1
+                  limit:
+                    type: integer
+                    example: 20
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Product"
+        "400":
+          description: Tham số truy vấn không hợp lệ
+        "500":
+          description: Lỗi máy chủ nội bộ
+
+    post:
+      summary: Tạo mới sản phẩm
+      tags: [Product]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProductCreate"
+      responses:
+        "201":
+          description: Sản phẩm được tạo thành công
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Product"
+        "400":
+          description: Dữ liệu gửi lên không hợp lệ
+        "500":
+          description: Lỗi hệ thống
+
+  /products/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+
+    get:
+      summary: Lấy chi tiết một sản phẩm
+      tags: [Product]
+      responses:
+        "200":
+          description: Thông tin chi tiết sản phẩm
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Product"
+        "404":
+          description: Không tìm thấy sản phẩm
+        "500":
+          description: Lỗi máy chủ
+
+    put:
+      summary: Cập nhật thông tin sản phẩm
+      tags: [Product]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProductUpdate"
+      responses:
+        "200":
+          description: Cập nhật thành công
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Product"
+        "400":
+          description: Dữ liệu cập nhật không hợp lệ
+        "404":
+          description: Không tìm thấy sản phẩm
+        "500":
+          description: Lỗi hệ thống
+
+    delete:
+      summary: Xóa sản phẩm
+      tags: [Product]
+      responses:
+        "204":
+          description: Xóa thành công (không có nội dung trả về)
+        "404":
+          description: Không tìm thấy sản phẩm
+        "500":
+          description: Lỗi hệ thống
+
+  /categories:
+    get:
+      summary: Lấy danh sách danh mục sản phẩm
+      tags: [Category]
+      responses:
+        "200":
+          description: Danh sách danh mục
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Category"
+        "500":
+          description: Lỗi máy chủ
+
+components:
+  schemas:
+    Product:
+      type: object
+      properties:
+        id:
+          type: string
+          example: "p123"
+        name:
+          type: string
+          example: "Đắc Nhân Tâm"
+        category:
+          type: string
+          example: "Tâm lý kỹ năng"
+        type:
+          type: string
+          example: "book"
+        price:
+          type: number
+          example: 135000
+        discount:
+          type: number
+          example: 10
+        stock:
+          type: integer
+          example: 50
+        description:
+          type: string
+          example: "Cuốn sách kinh điển về nghệ thuật giao tiếp."
+        images:
+          type: array
+          items:
+            type: string
+            example: "https://example.com/images/dacnhantam.jpg"
+        author:
+          type: string
+          example: "Dale Carnegie"
+        publisher:
+          type: string
+          example: "NXB Trẻ"
+        language:
+          type: string
+          example: "Tiếng Việt"
+        brand:
+          type: string
+        material:
+          type: string
+        size:
+          type: string
+        weight:
+          type: string
+        age_range:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    ProductCreate:
+      type: object
+      required: [name, category, type, price]
+      properties:
+        name:
+          type: string
+        category:
+          type: string
+        type:
+          type: string
+          enum: [book, toy, office_supply]
+        price:
+          type: number
+        stock:
+          type: integer
+          default: 0
+        discount:
+          type: number
+          default: 0
+        description:
+          type: string
+        images:
+          type: array
+          items:
+            type: string
+        author:
+          type: string
+        publisher:
+          type: string
+        language:
+          type: string
+        brand:
+          type: string
+        material:
+          type: string
+        size:
+          type: string
+        weight:
+          type: string
+        age_range:
+          type: string
+
+    ProductUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+        price:
+          type: number
+        stock:
+          type: integer
+        discount:
+          type: number
+        description:
+          type: string
+        images:
+          type: array
+          items:
+            type: string
+        brand:
+          type: string
+        material:
+          type: string
+        size:
+          type: string
+        weight:
+          type: string
+        age_range:
+          type: string
+
+    Category:
+      type: object
+      properties:
+        id:
+          type: string
+          example: "c01"
+        name:
+          type: string
+          example: "Văn học"

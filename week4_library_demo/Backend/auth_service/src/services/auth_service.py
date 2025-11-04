@@ -70,7 +70,7 @@ class AuthService:
         expires_at = datetime.utcnow() + timedelta(days=7) # Sống 7 ngày
         payload = {
             'iat': datetime.utcnow(),
-            'exp': expires_at,
+            'exp': expires_at, # Thời gian hết hạn
             'sub': user.id,
             'jti': jti # JWT ID, dùng để thu hồi
         }
