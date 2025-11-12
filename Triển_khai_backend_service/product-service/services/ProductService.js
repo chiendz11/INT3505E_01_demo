@@ -3,7 +3,7 @@ const Service = require('./Service');
 // 1. IMPORT MODEL VÀ CÁC THƯ VIỆN CẦN THIẾT
 const mongoose = require('mongoose');
 // Giả định Model được tạo tại ../models/product.js
-const Product = require('../models/product'); 
+const Product = require('../model/product'); 
 
 // Hàm tiện ích để xử lý lỗi Validation
 const handleMongooseError = (e) => {
@@ -18,11 +18,11 @@ const handleMongooseError = (e) => {
 * Tạo mới sản phẩm (POST /products)
 * (Nhiệm vụ của Đức)
 * */
-const productsPOST = ({ productCreate }) => new Promise(
+const productsPOST = ({ body }) => new Promise(
   async (resolve, reject) => {
     try {
       // 1. Tạo mới sản phẩm bằng Mongoose
-      const newProduct = await Product.create(productCreate);
+      const newProduct = await Product.create(body);
 
       // 2. Trả về sản phẩm đã tạo với status 201 (Created)
       resolve(Service.successResponse(newProduct.toJSON(), 201)); // Sử dụng toJSON() để format ID

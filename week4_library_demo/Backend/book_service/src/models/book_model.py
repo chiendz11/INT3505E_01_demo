@@ -7,7 +7,7 @@ from ..database import db
 class Book(db.Model):
     __tablename__ = 'books'
     
-    id = db.Column(db.Integer, primary_key=True)
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     title = db.Column(db.String(255), nullable=False)
     author = db.Column(db.String(255), nullable=False)
     available_copies = db.Column(db.Integer, nullable=False, default=0)
@@ -18,4 +18,5 @@ class Book(db.Model):
             'id': self.id,
             'title': self.title,
             'author': self.author,
+            'available_copies': self.available_copies
         }
