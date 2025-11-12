@@ -1,0 +1,375 @@
+{
+	"info": {
+		"_postman_id": "e4d35aab-a484-4b27-b3d7-20b75cac9777",
+		"name": "BookService_integration",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+		"_exporter_id": "49848479",
+		"_collection_link": "https://chiendz11-7324524.postman.co/workspace/Bui-Chien's-Workspace~dfd446d4-3de0-442d-870f-4d7e5b1f918f/collection/49848479-e4d35aab-a484-4b27-b3d7-20b75cac9777?action=share&source=collection_link&creator=49848479"
+	},
+	"item": [
+		{
+			"name": "{{base_url}}/auth/login",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"// 1. Kiểm tra request thành công\r",
+							"pm.test(\"Status code is 200 OK\", function () {\r",
+							"    pm.response.to.have.status(200);\r",
+							"});\r",
+							"\r",
+							"// 2. Lấy JSON response\r",
+							"var jsonData = pm.response.json();\r",
+							"\r",
+							"// 3. Kiểm tra user trả về có đúng là ADMIN không\r",
+							"// (Dựa trên decorators.py, role phải là 'ADMIN')\r",
+							"pm.test(\"User role is ADMIN\", function () {\r",
+							"    pm.expect(jsonData.user.role).to.eql(\"ADMIN\");\r",
+							"});\r",
+							"\r",
+							"// 4. LẤY VÀ LƯU TOKEN ADMIN\r",
+							"// Đây là bước \"tích hợp\" (integration)\r",
+							"if (jsonData.access_token) {\r",
+							"    pm.collectionVariables.set(\"admin_token\", jsonData.access_token);\r",
+							"    console.log(\"Admin Token đã được lưu!\");\r",
+							"} else {\r",
+							"    console.error(\"Không tìm thấy access_token trong response!\");\r",
+							"}"
+						],
+						"type": "text/javascript",
+						"packages": {},
+						"requests": {}
+					}
+				}
+			],
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n    \"login\": \"chiendz11\",\r\n    \"password\": \"Bop29042@@5\"\r\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "{{base_url}}/auth/login",
+					"host": [
+						"{{base_url}}"
+					],
+					"path": [
+						"auth",
+						"login"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "{{base_url}}/books",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"// 1. Kiểm tra status code là 201 Created\r",
+							"// (Dựa trên code controller của bạn)\r",
+							"pm.test(\"Status code is 201 Created\", function () {\r",
+							"    pm.response.to.have.status(201);\r",
+							"});\r",
+							"\r",
+							"// 2. LẤY VÀ LƯU BOOK ID\r",
+							"var jsonData = pm.response.json();\r",
+							"if (jsonData.book_id) {\r",
+							"    pm.collectionVariables.set(\"new_book_id\", jsonData.book_id);\r",
+							"    console.log(\"New Book ID đã được lưu: \" + jsonData.book_id);\r",
+							"} else {\r",
+							"    console.error(\"Không tìm thấy book_id trong response!\");\r",
+							"}\r",
+							"// ✅ BƯỚC SỬA ĐỔI: Lưu lại title để kiểm tra\r",
+							"pm.collectionVariables.set(\"new_book_title\", \"Lão Hạc\");"
+						],
+						"type": "text/javascript",
+						"packages": {},
+						"requests": {}
+					}
+				}
+			],
+			"request": {
+				"auth": {
+					"type": "bearer",
+					"bearer": [
+						{
+							"key": "token",
+							"value": "{{admin_token}}",
+							"type": "string"
+						}
+					]
+				},
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n    \"title\": \"Lão Hạc\",\r\n    \"author\": \"Nam Cao\",\r\n    \"available_copies\": 10\r\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "{{base_url}}/books",
+					"host": [
+						"{{base_url}}"
+					],
+					"path": [
+						"books"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "{{base_url}}/books",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"// 1. Kiểm tra request thành công\r",
+							"pm.test(\"Status code is 200 OK\", function () {\r",
+							"    pm.response.to.have.status(200);\r",
+							"});\r",
+							"\r",
+							"var jsonData = pm.response.json();\r",
+							"\r",
+							"// 2. Kiểm tra cấu trúc response (dựa trên book_service)\r",
+							"pm.test(\"Response has 'data' key which is an array\", function () {\r",
+							"    pm.expect(jsonData).to.have.property('data');\r",
+							"    pm.expect(jsonData.data).to.be.an('array');\r",
+							"});\r",
+							"\r",
+							"// 3. KIỂM TRA TÍCH HỢP: Tìm sách vừa tạo trong danh sách\r",
+							"// Lấy title đã lưu từ step 2\r",
+							"const newTitle = pm.collectionVariables.get(\"new_book_title\");\r",
+							"\r",
+							"// Dùng hàm .some() của JavaScript để tìm\r",
+							"const bookExists = jsonData.data.some(book => book.title === newTitle);\r",
+							"\r",
+							"pm.test(`Book '${newTitle}' exists in the list`, function () {\r",
+							"    pm.expect(bookExists).to.be.true;\r",
+							"});"
+						],
+						"type": "text/javascript",
+						"packages": {},
+						"requests": {}
+					}
+				}
+			],
+			"request": {
+				"auth": {
+					"type": "bearer",
+					"bearer": [
+						{
+							"key": "token",
+							"value": "{{admin_token}}",
+							"type": "string"
+						}
+					]
+				},
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{base_url}}/books?author_filter=Nam Cao",
+					"host": [
+						"{{base_url}}"
+					],
+					"path": [
+						"books"
+					],
+					"query": [
+						{
+							"key": "page",
+							"value": "2",
+							"disabled": true
+						},
+						{
+							"key": "limit",
+							"value": "5",
+							"disabled": true
+						},
+						{
+							"key": "author_filter",
+							"value": "Nam Cao"
+						}
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "{{base_url}}/books/{id}",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"// 1. Kiểm tra request thành công\r",
+							"pm.test(\"Status code is 200 OK\", function () {\r",
+							"    pm.response.to.have.status(200);\r",
+							"});\r",
+							"\r",
+							"// 2. Kiểm tra xem có lấy đúng sách không\r",
+							"pm.test(\"Book title is correct\", function () {\r",
+							"    var jsonData = pm.response.json();\r",
+							"    pm.expect(jsonData.title).to.eql(\"Lão Hạc\");\r",
+							"});"
+						],
+						"type": "text/javascript",
+						"packages": {},
+						"requests": {}
+					}
+				}
+			],
+			"request": {
+				"auth": {
+					"type": "bearer",
+					"bearer": [
+						{
+							"key": "token",
+							"value": "{{admin_token}}",
+							"type": "string"
+						}
+					]
+				},
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{base_url}}/books/{{new_book_id}}",
+					"host": [
+						"{{base_url}}"
+					],
+					"path": [
+						"books",
+						"{{new_book_id}}"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "{{base_url}}/books/{id}",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"// 1. Kiểm tra request thành công (thường là 200)\r",
+							"pm.test(\"Status code is 200 OK\", function () {\r",
+							"    pm.response.to.have.status(200);\r",
+							"});"
+						],
+						"type": "text/javascript",
+						"packages": {},
+						"requests": {}
+					}
+				}
+			],
+			"request": {
+				"auth": {
+					"type": "bearer",
+					"bearer": [
+						{
+							"key": "token",
+							"value": "{{admin_token}}",
+							"type": "string"
+						}
+					]
+				},
+				"method": "PUT",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n    \"title\": \"Sách Đã Được Cập Nhật\",\r\n    \"author\": \"Postman Updated\",\r\n    \"available_copies\": 5\r\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "{{base_url}}/books/{{new_book_id}}",
+					"host": [
+						"{{base_url}}"
+					],
+					"path": [
+						"books",
+						"{{new_book_id}}"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "{{base_url}}/books/{id}",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"// 1. Kiểm tra status code 204 No Content (chuẩn cho DELETE)\r",
+							"pm.test(\"Status code is 204 No Content\", function () {\r",
+							"    pm.response.to.have.status(204);\r",
+							"});"
+						],
+						"type": "text/javascript",
+						"packages": {},
+						"requests": {}
+					}
+				}
+			],
+			"request": {
+				"auth": {
+					"type": "bearer",
+					"bearer": [
+						{
+							"key": "token",
+							"value": "{{admin_token}}",
+							"type": "string"
+						}
+					]
+				},
+				"method": "DELETE",
+				"header": [],
+				"url": {
+					"raw": "{{base_url}}/books/{{new_book_id}}",
+					"host": [
+						"{{base_url}}"
+					],
+					"path": [
+						"books",
+						"{{new_book_id}}"
+					]
+				}
+			},
+			"response": []
+		}
+	],
+	"variable": [
+		{
+			"key": "admin_token",
+			"value": ""
+		},
+		{
+			"key": "new_book_title",
+			"value": ""
+		},
+		{
+			"key": "new_book_id",
+			"value": ""
+		}
+	]
+}
