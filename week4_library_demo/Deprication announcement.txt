@@ -1,0 +1,15 @@
+Tiêu đề: [Action Required] Nâng cấp Payment API lên phiên bản v2 trước ngày 30/12/2025
+
+Nội dung: Chào bạn,
+
+Chúng tôi xin thông báo API Thanh toán phiên bản v1 (Payment API v1) sẽ chính thức bị ngừng hỗ trợ (deprecated) từ hôm nay và sẽ tắt hoàn toàn (Sunset) vào ngày 30/12/2025.
+
+Tại sao có sự thay đổi này? Phiên bản v2 mới hỗ trợ chuẩn bảo mật 3D-Secure 2.0 và cải thiện tốc độ xử lý nhanh hơn 30%.
+
+Bạn cần làm gì? Vui lòng cập nhật ứng dụng của bạn sang endpoint mới: POST /api/v2/charges.
+
+Xem hướng dẫn chi tiết tại: [Link tới Migration Guide]
+
+Nếu sau ngày 30/12/2025 bạn chưa cập nhật, các giao dịch qua v1 sẽ bị từ chối (lỗi 410).
+
+Trân trọng, Đội ngũ API.

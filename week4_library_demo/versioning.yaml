@@ -1,0 +1,129 @@
+openapi: 3.0.0
+info:
+  title: Book Service API - Versioning Demo
+  version: 1.0.0-draft
+  description: |
+    Tài liệu API cho Buổi 9: Minh họa 3 chiến lược API Versioning và Deprecation.
+    
+    Endpoint: GET /api/books/{bookId}
+    Breaking Change: V1 dùng 'available_copies', V2 dùng 'stock_count'.
+    V1 is Deprecated (Sunset 2026-06-30).
+
+servers:
+  - url: http://localhost:5000/api # Thay đổi nếu server Flask chạy ở port khác
+
+paths:
+  # =======================================================
+  # A. CHIẾN LƯỢC 1: URL VERSIONING
+  # =======================================================
+  /v1/books/{bookId}:
+    get:
+      tags:
+        - URL Versioning
+      summary: Get Book by ID (V1 - DEPRECATED)
+      parameters:
+        - $ref: '#/components/parameters/bookId'
+      responses:
+        '200':
+          description: Phản hồi V1 - Chứa Header cảnh báo Deprecation.
+          headers:
+            Warning:
+              description: RFC 7234 Deprecation Notice Header
+              schema:
+                type: string
+                example: '299 - "API V1 is deprecated and will be Sunset on 2026-06-30. Please upgrade to V2."'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookV1'
+  
+  /v2/books/{bookId}:
+    get:
+      tags:
+        - URL Versioning
+      summary: Get Book by ID (V2 - CURRENT)
+      parameters:
+        - $ref: '#/components/parameters/bookId'
+      responses:
+        '200':
+          description: Phản hồi V2 - Dùng format mới.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookV2'
+        
+  # =======================================================
+  # B. CHIẾN LƯỢC 2 & 3: QUERY PARAM VÀ HEADER VERSIONING
+  # =======================================================
+  /books/{bookId}:
+    get:
+      tags:
+        - Query/Header Versioning
+      summary: Get Book by ID (Dynamic Version)
+      parameters:
+        - $ref: '#/components/parameters/bookId'
+        - name: v
+          in: query
+          description: Phiên bản qua Query Parameter (v=2). Mặc định là V1.
+          required: false
+          schema:
+            type: string
+            enum: [ '1', '2' ]
+        - name: Accept
+          in: header
+          description: Phiên bản qua Custom Media Type (application/vnd.book-service.v2+json).
+          required: false
+          schema:
+            type: string
+            example: application/vnd.book-service.v2+json
+            
+      responses:
+        '200':
+          description: Phản hồi sẽ là V2 nếu có Query v=2 hoặc Header V2, nếu không sẽ là V1 (kèm Warning).
+          content:
+            application/json:
+              # Minh họa cả hai Schema có thể được trả về tùy theo request
+              oneOf:
+                - $ref: '#/components/schemas/BookV1'
+                - $ref: '#/components/schemas/BookV2'
+
+components:
+  parameters:
+    bookId:
+      name: bookId
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+        example: 1
+        
+  schemas:
+    BookV1:
+      type: object
+      description: Schema cho API version 1 (Deprecated)
+      properties:
+        id:
+          type: integer
+        title:
+          type: string
+        available_copies: # <-- V1 FIELD (DEPRECATED)
+          type: integer
+          description: Số lượng bản copy hiện có.
+          deprecated: true
+        _links:
+          type: array
+    
+    BookV2:
+      type: object
+      description: Schema cho API version 2 (Hiện tại)
+      properties:
+        id:
+          type: integer
+        title:
+          type: string
+        stock_count: # <-- V2 FIELD (BREAKING CHANGE)
+          type: integer
+          description: Tổng số lượng hàng tồn kho.
+        _links:
+          type: array

@@ -45,6 +45,37 @@ def handle_generic_exception(error):
     print(f"Internal Server Error: {error}")
     return jsonify({"error": "An internal server error occurred"}), 500
 
+
+# ====================================================================
+# HÀM CHUNG: Xử lý Response, ETag và Deprecation Notice
+# ====================================================================
+
+def _handle_get_book_response(book_id, api_version):
+    """Hàm xử lý logic chung cho việc GET 1 cuốn sách (từ service đến response)."""
+    service = BookService()
+    base_url = request.url_root.strip('/') 
+    
+    # 1. Gọi Service theo phiên bản
+    book = service.get_book_by_id(book_id, base_url=base_url, version=api_version)
+    
+    # 2. Logic ETag và Response
+    etag = service.generate_etag(book)
+    if request.headers.get('If-None-Match') == etag:
+        return '', 304
+
+    response = make_response(jsonify(book), 200)
+    response.headers['ETag'] = etag
+    response.headers['Cache-Control'] = 'public, max-age=120'
+    
+    # 3. XỬ LÝ DEPRECATION NOTICE (áp dụng cho V1)
+    if api_version == 'v1':
+        print(f"ATTENTION: V1 API called. Sending Deprecation Warning.")
+        # Thêm Header cảnh báo Deprecation (RFC 7234 - Warning: 299 message)
+        response.headers['Warning'] = '299 - "API V1 is deprecated and will be Sunset on 2026-06-30. Please upgrade to V2."'
+        response.headers['X-API-Lifecycle'] = 'deprecated'
+
+    return response
+
 # ====================================================================
 # (Hàm validate pagination của bạn - Giữ nguyên)
 # ====================================================================
@@ -120,22 +151,43 @@ def list_books():
 # CRUD (Single Resource)
 # ------------------------------
 
-@book_bp.route('/books/<int:book_id>', methods=['GET'])
-def get_book(book_id):
-    # Chỉ cần gọi. Nếu lỗi, @errorhandler sẽ bắt.
-    service = BookService()
-    base_url = request.url_root.strip('/') 
-    book = service.get_book_by_id(book_id, base_url=base_url)
-    
-    # Logic ETag
-    etag = service.generate_etag(book)
-    if request.headers.get('If-None-Match') == etag:
-        return '', 304
+# ====================================================================
+# 1. CHIẾN LƯỢC VERSIONING QUA URL
+# ====================================================================
 
-    response = make_response(jsonify(book), 200)
-    response.headers['ETag'] = etag
-    response.headers['Cache-Control'] = 'public, max-age=120'
-    return response
+@book_bp.route('/v1/books/<int:book_id>', methods=['GET'])
+def get_book_v1_url(book_id):
+    """Endpoint V1 (URL)"""
+    return _handle_get_book_response(book_id, 'v1')
+
+@book_bp.route('/v2/books/<int:book_id>', methods=['GET'])
+def get_book_v2_url(book_id):
+    """Endpoint V2 (URL)"""
+    return _handle_get_book_response(book_id, 'v2')
+
+# ====================================================================
+# 2 & 3. CHIẾN LƯỢC VERSIONING QUA QUERY PARAM VÀ HEADER
+# ====================================================================
+
+@book_bp.route('/books/<int:book_id>', methods=['GET'])
+def get_book_default(book_id):
+    """
+    Endpoint mặc định. 
+    Kiểm tra Query Param, sau đó kiểm tra Header, nếu không có thì mặc định V1.
+    """
+    
+    # --- Ưu tiên 1: QUERY PARAM Versioning ---
+    version_query = request.args.get('v')
+    if version_query in ['2', 'v2']:
+        return _handle_get_book_response(book_id, 'v2')
+    
+    # --- Ưu tiên 2: HEADER Versioning (Custom Media Type) ---
+    accept_header = request.headers.get('Accept', '')
+    if 'application/vnd.book-service.v2+json' in accept_header:
+        return _handle_get_book_response(book_id, 'v2')
+        
+    # --- Mặc định: V1 (Deprecated) ---
+    return _handle_get_book_response(book_id, 'v1')
 
 
 @book_bp.route('/books', methods=['POST'])

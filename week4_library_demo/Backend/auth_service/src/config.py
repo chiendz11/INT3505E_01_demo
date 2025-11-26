@@ -53,3 +53,15 @@ class Config:
     SESSION_PERMANENT = False  # tránh session bị giữ quá lâu
     GATEWAY_PUBLIC_URL = os.environ.get("GATEWAY_PUBLIC_URL") 
     GOOGLE_REDIRECT_URI = f"{GATEWAY_PUBLIC_URL}/api/auth/google/callback"
+     # Tăng "bể" kết nối chính (mặc định chỉ là 5)
+    SQLALCHEMY_POOL_SIZE = 50
+    
+    # Cho phép tạo thêm kết nối "vượt" khi bể đầy
+    SQLALCHEMY_MAX_OVERFLOW = 20
+    
+    # Tự động làm mới kết nối sau 300 giây (rất tốt cho MySQL)
+    SQLALCHEMY_POOL_RECYCLE = 300
+    
+    # ==========================================================
+    
+    SQLALCHEMY_TRACK_MODIFICATIONS = False

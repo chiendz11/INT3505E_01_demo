@@ -1,0 +1,123 @@
+# 🛑 Thông báo Deprecation & Kế hoạch Nâng cấp API Sách (V1 → V2)
+
+## 1. Tổng quan
+
+Chào các Developer,
+
+Chúng tôi xin thông báo chính thức về việc phát hành **API Sách phiên bản 2 (V2)** và bắt đầu quy trình **Deprecation** cho **API Sách phiên bản 1 (V1)**.
+
+Mục tiêu của V2:
+
+* ✅ Cải thiện độ chính xác dữ liệu tồn kho
+* ✅ Chuẩn hóa cấu trúc dữ liệu cho các phiên bản tương lai
+* ✅ Tăng tính mở rộng và nhất quán của hệ thống
+
+---
+
+## 2. 🗓 Timeline Chuyển đổi Quan trọng
+
+| Giai đoạn   | Sự kiện                           | Ngày hiệu lực | Trạng thái V1                                 |
+| ----------- | --------------------------------- | ------------- | --------------------------------------------- |
+| Giai đoạn 2 | Deprecation (Phát hành song song) | 2025-11-26    | V1 vẫn hoạt động nhưng trả về Header cảnh báo |
+| Giai đoạn 3 | Sunset (Ngừng hoạt động)          | 2026-05-26    | V1 bị vô hiệu và trả về HTTP 410 Gone         |
+
+> ⚠️ **Hành động bắt buộc:** Tất cả client phải hoàn tất nâng cấp lên V2 trước ngày **2026-05-26**.
+
+---
+
+## 3. 🛠 Migration Guide: Chuyển từ V1 sang V2
+
+### 3.1 Breaking Change: Thay đổi tên trường tồn kho
+
+| Endpoint                | Version | Trường cũ (V1)   | Trường mới (V2) |
+| ----------------------- | ------- | ---------------- | --------------- |
+| GET /api/books/{bookId} | V1 → V2 | available_copies | stock_count     |
+
+📌 **Hành động bắt buộc:**
+
+* Cập nhật code client để đọc dữ liệu tồn kho từ trường `stock_count` khi sử dụng V2.
+
+---
+
+## 4. Cách gọi API V2 (Chọn 1 trong 3 chiến lược)
+
+### A. URL Versioning (Khuyến nghị cho client mới)
+
+```
+V1: GET /api/v1/books/{bookId}
+V2: GET /api/v2/books/{bookId}
+```
+
+### B. Header Versioning (Khuyến nghị cho client linh hoạt)
+
+```
+GET /api/books/{bookId}
+Accept: application/vnd.book-service.v2+json
+```
+
+### C. Query Parameter Versioning
+
+```
+GET /api/books/{bookId}?v=2
+```
+
+---
+
+## 5. ⚠ Cảnh báo Deprecation
+
+Trong giai đoạn hiện tại, nếu client vẫn gọi V1, server sẽ phản hồi kèm Header:
+
+```
+Warning: 299 - "API V1 is deprecated and will be sunset on 2026-05-26. Please upgrade to V2."
+Sunset: Sun, 26 May 2026 00:00:00 GMT
+Deprecation: true
+```
+
+📍 Ý nghĩa:
+
+* Client của bạn vẫn đang sử dụng V1
+* V1 sẽ ngừng hoạt động hoàn toàn sau ngày 2026-05-26
+
+✅ Hành động: Nâng cấp ngay lên V2 để tránh lỗi 410 Gone.
+
+---
+
+## 6. Hành vi hệ thống sau Sunset
+
+Sau ngày 2026-05-26:
+
+* Tất cả request tới V1 sẽ nhận:
+
+```
+HTTP/1.1 410 Gone
+{
+  "message": "API V1 has been permanently removed. Please use V2."
+}
+```
+
+---
+
+## 7. Checklist Cho Developer
+
+* [ ] Kiểm tra hệ thống có đang dùng V1 không
+* [ ] Cập nhật endpoint sang V2
+* [ ] Thay thế available_copies → stock_count
+* [ ] Kiểm thử lại logic tồn kho
+* [ ] Deploy production trước 2026-05-26
+
+---
+
+## 8. Tài liệu tham khảo
+
+* 📄 OpenAPI Specification V2
+* 📘 Migration Guide chi tiết
+* 📞 Support: [api-support@yourdomain.com](mailto:api-support@yourdomain.com)
+
+---
+
+## ✅ Kết luận
+
+Việc nâng cấp lên V2 là bắt buộc để đảm bảo sự ổn định và tính tương thích lâu dài. Chúng tôi khuyến khích các bạn thực hiện migration sớm để tránh gián đoạn dịch vụ.
+
+Trân trọng,
+**API Core Team**

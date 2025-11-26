@@ -28,5 +28,19 @@ class Config:
         f"{DB_HOST}:{DB_PORT}/{DB_DATABASE}"
     )
     
+    # ✅ ==========================================================
+    # ✅ THÊM 3 DÒNG NÀY ĐỂ SỬA LỖI NGHẼN CỔ CHAI (BOTTLENECK)
+    # ✅ ==========================================================
+    
+    # Tăng "bể" kết nối chính (mặc định chỉ là 5)
+    SQLALCHEMY_POOL_SIZE = 50
+    
+    # Cho phép tạo thêm kết nối "vượt" khi bể đầy
+    SQLALCHEMY_MAX_OVERFLOW = 20
+    
+    # Tự động làm mới kết nối sau 300 giây (rất tốt cho MySQL)
+    SQLALCHEMY_POOL_RECYCLE = 300
+    
+    # ==========================================================
+    
     SQLALCHEMY_TRACK_MODIFICATIONS = False
-
