@@ -1,0 +1,136 @@
+version: '3.8'
+
+services:
+  # ==========================================
+  # 1. DATABASE (MySQL 8.0)
+  # ==========================================
+  db:
+    image: mysql:8.0
+    container_name: mysql_db
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: bop29042005
+      # Không cần MYSQL_DATABASE vì init.sql sẽ tự tạo nhiều DB
+    ports:
+      - "3307:3306" # Để bạn check bằng Workbench từ ngoài nếu muốn
+    volumes:
+      # Mount thư mục chứa file init.sql vào đây để MySQL tự chạy
+      - ./mysql_init:/docker-entrypoint-initdb.d
+      # (Tùy chọn) Persist data để tắt máy không mất dữ liệu
+      - mysql_data:/var/lib/mysql
+    networks:
+      - microservices_net
+    # Kiểm tra sức khỏe DB (Quan trọng)
+    healthcheck:
+      test: ["CMD", "mysqladmin" ,"ping", "-h", "localhost"]
+      timeout: 20s
+      retries: 10
+
+  # ==========================================
+  # 2. AUTH SERVICE (Backend Authentication)
+  # ==========================================
+  auth_service:
+    container_name: auth_service
+    build: ./auth_service
+    restart: on-failure
+    environment:
+      - FLASK_ENV=production
+      - SECRET_KEY=bop_secret_key
+      # SỬA LỖI: Host là 'db', Port là 3306, DB là auth_db
+      - SQLALCHEMY_DATABASE_URI=mysql+mysqlconnector://root:bop29042005@db/auth_db
+    ports:
+      - "5001:5000" # Map ra 5001 để bạn soi Metrics (Optional)
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - microservices_net
+
+  # ==========================================
+  # 3. BOOK SERVICE (Backend Logic)
+  # ==========================================
+  book_service:
+    container_name: book_service
+    build: ./book_service
+    restart: on-failure
+    environment:
+      - FLASK_ENV=production
+      # SỬA LỖI: Host là 'db', DB là book_db
+      - SQLALCHEMY_DATABASE_URI=mysql+mysqlconnector://root:bop29042005@db/book_db
+    ports:
+      - "5002:5000" # Map ra 5002 để bạn soi Metrics (Optional)
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - microservices_net
+
+  # ==========================================
+  # 4. API GATEWAY (Entry Point Internal)
+  # ==========================================
+  api_gateway:
+    container_name: api_gateway
+    build: ./api_gateway
+    restart: on-failure
+    environment:
+      - FLASK_ENV=production
+      # Gọi các service con qua tên container và port nội bộ (5000)
+      - AUTH_SERVICE_URL=http://auth_service:5000
+      - BOOK_SERVICE_URL=http://book_service:5000
+    ports:
+      - "5000:5000" # Map ra 5000 để soi Metrics Gateway
+    depends_on:
+      - auth_service
+      - book_service
+    networks:
+      - microservices_net
+
+  # ==========================================
+  # 5. NGINX (WAF & Reverse Proxy Public)
+  # ==========================================
+  nginx_gateway:
+    image: nginx:latest
+    container_name: nginx_waf
+    restart: always
+    ports:
+      - "8080:80" # Cổng Public duy nhất cho Client
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - api_gateway
+    networks:
+      - microservices_net
+    
+    # ==========================================
+  # 6. PROMETHEUS (Database lưu Metrics)
+  # ==========================================
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+    ports:
+      - "9090:9090"
+    networks:
+      - microservices_net
+
+  # ==========================================
+  # 7. GRAFANA (Giao diện Dashboard)
+  # ==========================================
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin # Mật khẩu đăng nhập
+    depends_on:
+      - prometheus
+    networks:
+      - microservices_net
+
+networks:
+  microservices_net:
+
+volumes:
+  mysql_data:

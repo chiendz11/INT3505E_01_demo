@@ -1,10 +1,15 @@
+# auth_service/src/controllers/auth_controller.py
+
+import time
+import logging
 import json
+import traceback
+from urllib.parse import quote
 from flask import Blueprint, request, jsonify, current_app, make_response, redirect, session
 from ..services.auth_service import AuthService
 from ..services.oauth_service import oauth, OAuthService
-from urllib.parse import quote
 
-# ✅ BƯỚC 1: Import các exception mới
+# Import các exception
 from ..exceptions import (
     AuthError, InvalidLoginError, UserInactiveError, 
     UserAlreadyExistsError, InvalidTokenError, MissingDataError
@@ -13,172 +18,234 @@ from ..exceptions import (
 auth_bp = Blueprint('auth_bp', __name__)
 
 # ====================================================================
-# ✅ BƯỚC 2: ĐỊNH NGHĨA CÁC TRÌNH XỬ LÝ LỖI (ERROR HANDLERS)
+# [LESSON 10] SETUP LOGGING & HELPER
+# ====================================================================
+
+# 1. Cấu hình Logger
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("AuthServiceMonitor")
+
+# 2. Helper: Audit Log (Quan trọng nhất của Auth Service)
+def log_audit(action, target_id, details=None):
+    """
+    Ghi lại các sự kiện bảo mật quan trọng: Login, Register, Logout.
+    """
+    audit_record = {
+        "event_type": "SECURITY_AUDIT_LOG", # Đánh dấu riêng cho Security
+        "timestamp": time.time(),
+        "actor": target_id or "Anonymous",  # Với Auth, actor thường là chính user đó
+        "action": action,
+        "target_resource": "user_account",
+        "ip_address": request.remote_addr,
+        "details": details or {}
+    }
+    logger.info(json.dumps(audit_record))
+
+# ====================================================================
+# [LESSON 10] MIDDLEWARE: OBSERVABILITY
+# ====================================================================
+
+@auth_bp.before_request
+def start_timer():
+    request.start_time = time.time()
+
+@auth_bp.after_request
+def log_access_request(response):
+    if hasattr(request, 'start_time'):
+        duration = time.time() - request.start_time
+        
+        log_data = {
+            "event_type": "ACCESS_LOG",
+            "method": request.method,
+            "path": request.path,
+            "ip": request.remote_addr,
+            "status": response.status_code,
+            "duration_seconds": round(duration, 4),
+            "user_agent": request.headers.get('User-Agent')
+        }
+        
+        if response.status_code >= 500:
+            logger.error(json.dumps(log_data))
+        elif response.status_code >= 400:
+            logger.warning(json.dumps(log_data))
+        else:
+            logger.info(json.dumps(log_data))
+            
+    return response
+
+# ====================================================================
+# ERROR HANDLERS
 # ====================================================================
 
 @auth_bp.errorhandler(InvalidLoginError)
 @auth_bp.errorhandler(UserInactiveError)
 @auth_bp.errorhandler(InvalidTokenError)
 def handle_unauthorized(error):
-    """
-    Xử lý các lỗi 401 (Xác thực thất bại, token sai, user bị khóa).
-    """
+    # Log warning để phát hiện tấn công dò mật khẩu
+    logger.warning(f"[SECURITY] Auth Failed: {str(error)} | IP: {request.remote_addr}")
     return jsonify({"error": str(error)}), 401
 
 @auth_bp.errorhandler(UserAlreadyExistsError)
 def handle_conflict(error):
-    """
-    Xử lý lỗi 409 (Trùng tài nguyên, ví dụ: trùng email/username).
-    """
     return jsonify({"error": str(error)}), 409
 
 @auth_bp.errorhandler(MissingDataError)
 def handle_bad_request(error):
-    """
-    Xử lý lỗi 400 (Dữ liệu vào thiếu hoặc sai).
-    """
     return jsonify({"error": str(error)}), 400
 
 @auth_bp.errorhandler(AuthError)
 @auth_bp.errorhandler(Exception)
 def handle_generic_error(error):
-    """
-    Xử lý các lỗi 500 (Lỗi server chung, không lường trước được).
-    """
-    # Bạn NÊN log lỗi này ra file hoặc console để debug
-    print(f"🔥 Internal Server Error: {error}") 
-    return jsonify({"error": "Đã xảy ra lỗi không mong muốn."}), 500
+    # [DEBUGGING] In traceback chi tiết cho lỗi 500
+    error_traceback = traceback.format_exc()
+    logger.error(f"INTERNAL SERVER ERROR:\n{error_traceback}")
+    return jsonify({"error": "An internal server error occurred."}), 500
 
 # ====================================================================
-# ✅ BƯỚC 3: CÁC ROUTE ĐÃ ĐƯỢC DỌN SẠCH
+# ROUTES
 # ====================================================================
 
 @auth_bp.route('/users', methods=['POST'])
 def register():
-    data = request.json
-    email = data.get('email')
-    username = data.get('username')
-    password = data.get('password')
-
-    if not all([email, username, password]):
-        # Ném lỗi 400, @errorhandler sẽ bắt
-        raise MissingDataError("Email, username, và password là bắt buộc")
-
-    service = AuthService()
-    # Chỉ gọi. Nếu lỗi, @errorhandler sẽ bắt.
-    user = service.register_user(email, username, password)
+    # [SECURITY] Rate Limit: Chặn spam đăng ký (5 lần/phút)
+    limiter = current_app.extensions['limiter']
+    with limiter.limit("5 per minute"):
         
-    return jsonify({"message": "Đăng ký thành công", "user_id": user.id}), 201
+        data = request.json
+        email = data.get('email')
+        username = data.get('username')
+        password = data.get('password')
+
+        if not all([email, username, password]):
+            raise MissingDataError("Email, username, và password là bắt buộc")
+
+        service = AuthService()
+        user = service.register_user(email, username, password)
+        
+        # [AUDIT LOG] Ghi nhận đăng ký mới
+        log_audit("REGISTER", user.id, {"username": username, "email": email})
+            
+        return jsonify({"message": "Đăng ký thành công", "user_id": user.id}), 201
 
 @auth_bp.route('/login', methods=['POST'])
 def login():
-    data = request.json
-    login_identifier = data.get('login')
-    password = data.get('password')
-
-    if not all([login_identifier, password]):
-        raise MissingDataError("Login và password là bắt buộc")
-
-    service = AuthService()
-    # Service sẽ ném lỗi 401 nếu thất bại
-    user, access_token, refresh_token_data = service.login_user(login_identifier, password)
-
-    # Happy Path: Tạo response
-    user_profile = {
-        "id": user.id, "email": user.email,
-        "username": user.username, "role": user.role
-    }
+    # [SECURITY] Rate Limit: Chống Brute Force (10 lần/phút)
+    limiter = current_app.extensions['limiter']
+    with limiter.limit("10 per minute"):
     
-    response = make_response(jsonify({
-        "access_token": access_token,
-        "user": user_profile
-    }))
-    
-    # Set cookie cho refresh token
-    response.set_cookie(
-        "refresh_token", refresh_token_data['token'],
-        httponly=True, 
-        secure=True,     # (True nếu production dùng HTTPS)
-        samesite='None', # (Nếu frontend và backend khác domain)
-        path='/api/auth' # Chỉ gửi cookie khi gọi các API trong /api/auth/
-    )
-    return response
+        data = request.json
+        login_identifier = data.get('login')
+        password = data.get('password')
 
-# --- Các phiên bản Login V2, V3, V4, V5 ---
-# (Các route này sẽ tự động được hưởng lợi từ @errorhandler
-# vì chúng đều gọi service.login_user)
+        if not all([login_identifier, password]):
+            raise MissingDataError("Login và password là bắt buộc")
+
+        service = AuthService()
+        user, access_token, refresh_token_data = service.login_user(login_identifier, password)
+
+        # Happy Path: Tạo response
+        user_profile = {
+            "id": user.id, "email": user.email,
+            "username": user.username, "role": user.role
+        }
+        
+        response = make_response(jsonify({
+            "access_token": access_token,
+            "user": user_profile
+        }))
+        
+        # [AUDIT LOG] Ghi nhận đăng nhập thành công
+        log_audit("LOGIN", user.id, {"username": user.username})
+
+        # Set cookie secure
+        is_production = current_app.config.get('ENV') == 'production'
+        response.set_cookie(
+            "refresh_token", refresh_token_data['token'],
+            httponly=True, 
+            secure=is_production,     
+            samesite='None' if is_production else 'Lax',
+            path='/api/auth'
+        )
+        return response
+
+# --- Các phiên bản Login V2 (Áp dụng tương tự) ---
 
 @auth_bp.route('/v2/login', methods=['POST'])
 def login_v2():
-    data = request.json
-    login_identifier = data.get('login')
-    password = data.get('password')
-    if not all([login_identifier, password]):
-        raise MissingDataError("Login và password là bắt buộc")
+    # Vẫn áp dụng Rate Limit cho V2
+    limiter = current_app.extensions['limiter']
+    with limiter.limit("10 per minute"):
+        data = request.json
+        login_identifier = data.get('login')
+        password = data.get('password')
+        if not all([login_identifier, password]):
+            raise MissingDataError("Login và password là bắt buộc")
 
-    service = AuthService()
-    user, access_token, refresh_token_data = service.login_user(login_identifier, password)
-    
-    user_profile_v2 = {
-        "id": user.id, "email": user.email, "username": user.username, "role": user.role,
-        "full_name": getattr(user, 'full_name', None),
-        "avatar_url": getattr(user, 'avatar_url', None)
-    }
-    response = make_response(jsonify({"access_token": access_token, "user": user_profile_v2}))
-    response.set_cookie("refresh_token", refresh_token_data['token'],
-        httponly=True, secure=True, samesite='None', path='/api/auth/tokens') # Giả sử path khác
-    return response
+        service = AuthService()
+        user, access_token, refresh_token_data = service.login_user(login_identifier, password)
+        
+        user_profile_v2 = {
+            "id": user.id, "email": user.email, "username": user.username, "role": user.role,
+            "full_name": getattr(user, 'full_name', None),
+            "avatar_url": getattr(user, 'avatar_url', None)
+        }
+        
+        log_audit("LOGIN_V2", user.id) # Audit Log
+        
+        response = make_response(jsonify({"access_token": access_token, "user": user_profile_v2}))
+        
+        is_production = current_app.config.get('ENV') == 'production'
+        response.set_cookie("refresh_token", refresh_token_data['token'],
+            httponly=True, secure=is_production, samesite='None' if is_production else 'Lax', path='/api/auth')
+        return response
 
-# (Các route V3, V4, V5... tương tự)
-
-# --- Các route Token ---
+# --- Token Management ---
 
 @auth_bp.route('/refresh-token', methods=['PUT'])
 def refresh():
-    refresh_token = request.cookies.get('refresh_token')
-    if not refresh_token:
-        raise InvalidTokenError("Thiếu refresh token trong cookie")
+    # Rate Limit cho refresh (tránh spam token mới)
+    limiter = current_app.extensions['limiter']
+    with limiter.limit("20 per minute"):
+        
+        refresh_token = request.cookies.get('refresh_token')
+        if not refresh_token:
+            raise InvalidTokenError("Thiếu refresh token trong cookie")
 
-    service = AuthService()
-    # Service sẽ ném lỗi 401 nếu token sai/hết hạn
-    access_token = service.refresh_access_token(refresh_token)
-
-    return jsonify({"access_token": access_token}), 200
+        service = AuthService()
+        access_token = service.refresh_access_token(refresh_token)
+        
+        # Access log sẽ tự ghi lại việc này
+        return jsonify({"access_token": access_token}), 200
 
 @auth_bp.route('/logout', methods=['DELETE'])
 def logout():
     refresh_token = request.cookies.get('refresh_token')
-    if not refresh_token:
-        # Dù không có token, vẫn nên trả về 200 (đã đăng xuất)
-        # và cố gắng xóa cookie (nếu có)
-        pass 
-
+    
     if refresh_token:
         service = AuthService()
-        # Chúng ta không cần quan tâm lỗi ở đây
-        # Dù token hợp lệ hay không, client cũng muốn đăng xuất
         try:
+            # Audit Log Logout (cần decode token để biết ai logout, nhưng ở đây log token hash tạm)
+            log_audit("LOGOUT", "Unknown_User", {"token_preview": refresh_token[:10] + "..."})
             service.logout_user(refresh_token) 
         except InvalidTokenError:
-            # Bỏ qua lỗi, vì đằng nào cũng xóa cookie
             pass
     
     response = make_response(jsonify({"message": "Đăng xuất thành công"}), 200)
     
-    # Gửi lệnh cho trình duyệt xóa cookie
+    is_production = current_app.config.get('ENV') == 'production'
     response.delete_cookie(
         "refresh_token", 
-        path='/api/auth', # Path phải khớp với lúc set
-        secure=True, 
+        path='/api/auth', 
+        secure=is_production, 
         httponly=True, 
-        samesite='None'
+        samesite='None' if is_production else 'Lax'
     )
     return response
 
 @auth_bp.route('/validate', methods=['POST'])
 def validate_token():
     """
-    Endpoint NỘI BỘ, chỉ API Gateway được gọi.
+    Endpoint NỘI BỘ: Không cần Rate Limit quá gắt vì chỉ Gateway gọi.
     """
     token = request.headers.get('Authorization')
     if not token or not token.startswith('Bearer '):
@@ -187,50 +254,45 @@ def validate_token():
     access_token = token.split(" ")[1]
 
     service = AuthService()
-    # Service sẽ ném lỗi 401 nếu token sai/hết hạn
     user_data = service.validate_access_token(access_token)
     
-    # Trả về thông tin user cho Gateway
     return jsonify({"valid": True, "user": user_data}), 200
 
-# --- Các route OAuth ---
-# (Các route này đã xử lý lỗi bằng try/except riêng 
-# vì logic redirect của chúng phức tạp, giữ nguyên là TỐT)
+# --- OAuth Endpoints (Giữ nguyên logic redirect) ---
 
 @auth_bp.route("/google/login")
 def google_login():
     redirect_uri = current_app.config["GOOGLE_REDIRECT_URI"]
-    # (Giữ nguyên logic authorize_redirect của bạn)
-    response = oauth.google.authorize_redirect(
-        redirect_uri, 
-        code_challenge_method='S256' 
-    )
+    response = oauth.google.authorize_redirect(redirect_uri, code_challenge_method='S256')
     current_app.session_interface.save_session(current_app, session, response)
     return response
 
 @auth_bp.route("/google/callback")
 def google_callback():
-    frontend_url = "http://localhost:5174/login" 
+    frontend_url = "http://localhost:5174/login" # Nên lấy từ Config
     try:
         token = oauth.google.authorize_access_token() 
         user_info = token.get('userinfo') 
         service = OAuthService() 
         result = service.handle_google_user(user_info) 
-        redirect_url = f"{frontend_url}?login=success" # (Nên gửi token theo cách khác)
+        
+        log_audit("LOGIN_GOOGLE", result.get('user_id', 'unknown')) # Audit
+        
+        redirect_url = f"{frontend_url}?login=success" 
         response = make_response(redirect(redirect_url)) 
         
+        is_production = current_app.config.get('ENV') == 'production'
         response.set_cookie(
             "refresh_token", result["refresh_token"], 
-            httponly=True, secure=True, samesite="None", path="/api/auth"
+            httponly=True, secure=is_production, samesite="None" if is_production else 'Lax', path="/api/auth"
         )
         return response
 
     except Exception as e:
-        print(f"🔥 Google OAuth callback error: {e}")
+        logger.error(f"Google OAuth Error: {str(e)}")
         return redirect(f"{frontend_url}#error=google_login_failed")
 
-# --- Các route Debug N+1 ---
-# (Các route này chỉ là Happy Path, không cần sửa)
+# --- Debug Routes (Giữ nguyên) ---
 
 @auth_bp.route('/users/nplus1', methods=['GET'])
 def debug_users_nplus1():

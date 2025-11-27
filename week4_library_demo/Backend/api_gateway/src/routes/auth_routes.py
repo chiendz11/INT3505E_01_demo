@@ -5,54 +5,47 @@ import requests
 auth_bp = Blueprint('auth_bp', __name__)
 
 def _proxy_request(service_url, path, new_data=None):
-    """Hàm chung để proxy request."""
+    """Hàm chung để proxy request - Đã tối ưu hóa."""
     try:
         downstream_url = f"{service_url}/{path}"
         
-        # Thêm header user nếu đã được xác thực
+        # 1. Chuẩn bị Headers để chuyển tiếp
+        # Loại bỏ Host header để tránh lỗi routing ở downstream
         headers = {key: value for (key, value) in request.headers if key != 'Host'}
-        if hasattr(g, 'user'):
-            headers['X-User-ID'] = g.user.get('user_id')
-            headers['X-User-Role'] = g.user.get('role')
+        
+        # 2. Inject thông tin User (Quan trọng cho Audit Log ở Service con)
+        if hasattr(g, 'user') and g.user:
+            headers['X-User-ID'] = str(g.user.get('user_id'))
+            headers['X-User-Role'] = str(g.user.get('role'))
 
+        # 3. Gửi Request
         resp = requests.request(
             method=request.method,
             url=downstream_url,
             headers=headers,
-            # Sửa lại để truyền đúng data/json
             data=request.get_data() if new_data is None else None,
             json=new_data,
             params=request.args,
-            timeout=5,
-            allow_redirects=False # Quan trọng: Không để gateway tự động theo redirect
+            timeout=10, # Tăng timeout lên chút cho an toàn
+            allow_redirects=False # Gateway không tự redirect
         )
         
-        # Xử lý trường hợp redirect (như trong luồng OAuth)
-        if resp.is_redirect:
-            # LỖI CŨ:
-            # return Response(status=resp.status_code, headers={'Location': resp.headers['Location']})
-            
-            # ✅ SỬA LỖI (Chuẩn Dev):
-            # Phải proxy *tất cả* header (bao gồm 'Location' và 'Set-Cookie')
-            excluded_headers = ['content-encoding', 'content-length', 'transfer-encoding', 'connection']
-            headers = [
-                (name, value) for (name, value) in resp.raw.headers.items() 
-                if name.lower() not in excluded_headers
-            ]
-            
-            # Trả về Response với đầy đủ header
-            return Response(status=resp.status_code, headers=headers)
+        # 4. Xử lý Response headers (Loại bỏ các header Hop-by-hop)
         excluded_headers = ['content-encoding', 'content-length', 'transfer-encoding', 'connection']
-        headers = [(name, value) for (name, value) in resp.raw.headers.items() if name.lower() not in excluded_headers]
-        response_data = resp.content
-        return Response(response_data, resp.status_code, headers)
+        headers = [
+            (name, value) for (name, value) in resp.raw.headers.items() 
+            if name.lower() not in excluded_headers
+        ]
+        
+        # 5. Trả về Response nguyên vẹn
+        return Response(resp.content, resp.status_code, headers)
 
     except requests.exceptions.ConnectionError:
-        return jsonify({"error": "Service is unavailable"}), 503
+        return jsonify({"error": "Service Unavailable (Downstream)"}), 503
     except requests.exceptions.Timeout:
-        return jsonify({"error": "Request to service timed out"}), 504
+        return jsonify({"error": "Gateway Timeout"}), 504
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": f"Gateway Error: {str(e)}"}), 500
 
 # ==================================
 # RESTful Authentication Endpoints (Email/Password)

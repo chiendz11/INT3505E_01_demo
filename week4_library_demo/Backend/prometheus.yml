@@ -1,0 +1,13 @@
+# file: prometheus.yml
+global:
+  scrape_interval: 5s # Cào dữ liệu mỗi 5 giây (Demo cho nhanh thấy)
+
+scrape_configs:
+  - job_name: 'flask_microservices'
+    metrics_path: /metrics
+    static_configs:
+      - targets: 
+        # Tên Service trong Docker : Cổng nội bộ (5000)
+        - 'api_gateway:5000'
+        - 'auth_service:5000'
+        - 'book_service:5000'

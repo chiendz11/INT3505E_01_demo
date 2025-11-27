@@ -1,8 +1,19 @@
-﻿Flask
+﻿# --- Core Framework & Utilities ---
+Flask
 Flask-Migrate
 Flask-SQLAlchemy
-requests
+Flask-Cors
+python-dotenv              # (Nên có) Để load file .env
+
+# --- Networking (Quan trọng cho Gateway) ---
+requests                   # Dùng để gọi sang Auth/Book Service
 requests-file
 requests-toolbelt
-Flask-Cors
+
+# --- Dev Tools ---
 pyngrok
+
+# --- [LESSON 10 - QUAN TRỌNG] ---
+Flask-Limiter              # Bảo mật: Rate Limiting (Chặn spam IP)
+prometheus-flask-exporter  # Monitoring: Đo Metrics tổng traffic
+gunicorn                   # Deployment: Production WSGI Server

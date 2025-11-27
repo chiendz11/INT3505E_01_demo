@@ -1,6 +1,15 @@
+# api_gateway/src/__init__.py
+
 from flask import Flask
 from flask_cors import CORS
 from .config import Config
+
+# [LESSON 10] Thêm thư viện Monitoring & Security
+from flask import request
+
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
+from prometheus_flask_exporter import PrometheusMetrics
 
 def create_app():
     app = Flask(__name__)
@@ -8,27 +17,43 @@ def create_app():
 
     # Lấy Origin của Frontend từ Config
     frontend_origin = app.config.get('FRONTEND_ORIGIN')
-    swager_ui_origin = "https://app.swaggerhub.com"
+    swagger_ui_origin = "https://app.swaggerhub.com" # Đã sửa lỗi chính tả
     
     # --- Cấu hình CORS ---
-    # Thiết lập CORS chỉ cho phép Frontend Origin đã được cấu hình
     CORS(
         app,
-        resources={r"/api/*": {"origins": [frontend_origin, swager_ui_origin]}},
+        resources={r"/api/*": {"origins": [frontend_origin, swagger_ui_origin]}},
         supports_credentials=True, 
-        # !!! THÊM THAM SỐ allowed_headers !!!
-        # Cần thêm 'If-None-Match' để hỗ trợ ETag.
-        # Thêm 'Content-Type' và 'Authorization' (nếu dùng cho token/cookies) là thực tế.
-        allow_headers=['Content-Type', 'Authorization', 'If-None-Match'], 
+        allow_headers=['Content-Type', 'Authorization', 'If-None-Match', 'X-User-ID', 'X-User-Role'], 
     )
 
-    # Đăng ký các blueprint với một prefix chung là /api
+    # ====================================================================
+    # [LESSON 10] CẤU HÌNH GATEWAY MONITORING & SECURITY
+    # ====================================================================
+    def should_exempt():
+        return request.path == "/metrics"
+    
+    # 1. Rate Limiter (Gateway chặn tổng thể: 1000 req/giờ mỗi IP)
+    limiter = Limiter(
+        key_func=get_remote_address,
+        app=app,
+        default_limits=["2000 per day", "500 per hour"],
+        storage_uri="memory://",
+    )
+    limiter.request_filter(should_exempt)
+    
+    # 2. Prometheus Metrics (Đo traffic tổng của cả hệ thống)
+    # Gateway là nơi tốt nhất để đo xem hệ thống có bao nhiêu request
+    metrics = PrometheusMetrics(app)
+    metrics.info('gateway_info', 'API Gateway', version='1.0.0')
+
+    # ====================================================================
+
+    # Đăng ký các blueprint
     from .routes.auth_routes import auth_bp
     from .routes.book_routes import book_bp
     from .routes.transaction_routes import transaction_bp
     
-    # Mọi route trong auth_bp và book_bp giờ sẽ bắt đầu bằng /api
-    # CORS đã được áp dụng ở trên
     app.register_blueprint(auth_bp, url_prefix='/api')
     app.register_blueprint(book_bp, url_prefix='/api')
     app.register_blueprint(transaction_bp, url_prefix='/api')

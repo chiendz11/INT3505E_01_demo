@@ -1,9 +1,26 @@
-flask
-flask_sqlalchemy
-mysql-connector-python
-flask_bcrypt
-PyJWT
+# --- Core Framework ---
+Flask
+Flask-SQLAlchemy
+Flask-Migrate              # (Nên thêm) Để quản lý thay đổi DB
 python-dotenv
-gunicorn
-Authlib
-flask_session
+
+# --- Database Drivers ---
+# Bạn dùng mysql-connector-python cũng được, 
+# nhưng 'pymysql' hoặc 'mysqlclient' thường chạy mượt hơn với SQLAlchemy.
+# Tuy nhiên, nếu code cũ chạy ổn thì cứ giữ nguyên dòng dưới:
+mysql-connector-python     
+
+# --- Authentication & Session ---
+flask_bcrypt               # Mã hóa mật khẩu
+PyJWT                      # Tạo Token JWT
+Authlib                    # OAuth (Google Login)
+flask_session              # Quản lý Session server-side
+requests                   # Để gọi Google API xác thực OAuth
+
+# --- Security (Quan trọng cho Auth) ---
+Flask-Cors                 # Xử lý Cross-Origin nếu Frontend gọi trực tiếp
+Flask-Limiter              # [LESSON 10] Chống Brute-Force Login (Dò mật khẩu)
+
+# --- Monitoring & Production ---
+prometheus-flask-exporter  # [LESSON 10] Đo metrics (Login success/fail)
+gunicorn                   # [LESSON 10] Chạy Production
